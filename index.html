@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>DESIGN PORTAL</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- Mapbox GL CSS -->
+  <link href="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css" rel="stylesheet" />
+  <!-- Mapbox GL Draw CSS -->
+  <link href="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-draw/v1.4.2/mapbox-gl-draw.css" rel="stylesheet" />
+  <style>
+    body { margin: 0; padding: 0; font-family: Arial, sans-serif; }
+    #header {
+      position: fixed;
+      top: 0;
+      left:0;
+      right: 0;
+      height: 50px;
+      background: #046e97;
+      color: #070124;
+      line-height: 50px;
+      padding-left: 600px;
+      z-index: 2;
+      font-size: 20px;
+    }
+    #sidebar {
+      position: fixed;
+      top: 50px;
+      left: 0;
+      bottom: 0;
+      width: 150px;
+      background: #494747;
+      padding: 10px;
+      overflow-y: auto;
+      z-index: 2;
+      border-right: 1px solid #ddd;
+    }
+    #sidebar button {
+      width: 100%;
+      margin-bottom: 10px;
+      padding: 10px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+    #map {
+      position: absolute;
+      top: 50px;
+      left: 150px;
+      right: 0;
+      bottom: 0;
+    }
+    #layers-panel {
+      margin-top: 20px;
+      color: white;
+    }
+    #layers-list div {
+      margin: 8px 0;
+    }
+    .layer-toggle {
+      margin-right: 8px;
+    }
+  </style>
+</head>
+<body>
+  <div id="header">Design Portal</div>
+  <div id="sidebar">
+    <button id="draw-line">Draw Polyline</button>
+    <button id="draw-polygon">Draw Polygon</button>
+    <button id="export">Export as GeoJSON</button>
+    <button id="import">Import GeoJSON</button>
+    <input type="file" id="file-input" style="display: none;" accept=".geojson,application/json">
+    <div id="layers-panel">
+      <h3>Layers</h3>
+      <div id="layers-list">
+        <!-- Layers will be added here dynamically -->
+      </div>
+    </div>
+  </div>
+  <div id="map"></div>
+  
+  <!-- Mapbox GL JS -->
+  <script src="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js"></script>
+  <!-- Mapbox GL Draw JS -->
+  <script src="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-draw/v1.4.2/mapbox-gl-draw.js"></script>
+  
+  <script>
+    // Set your Mapbox access token here
+    mapboxgl.accessToken = 'pk.eyJ1Ijoic2Nocm9kZXItaGlsbCIsImEiOiJjbHpmdW5ibXUxY3I1MmtvbXU3c2t0aHhoIn0.D_W59ZKzQSJf7WF8Cfhm3w';
+
+    // Initialize the Mapbox map over Marlborough, New Zealand
+    var map = new mapboxgl.Map({
+      container: 'map',
+      style: 'mapbox://styles/mapbox/outdoors-v12',
+      center: [173.95, -41.5],
+      zoom: 9
+    });
+
+    // Initialize Mapbox GL Draw with the trash control enabled
+    var draw = new MapboxDraw({
+      displayControlsDefault: false,
+      controls: {
+        line_string: false,
+        polygon: false,
+        trash: true
+      },
+      styles: [
+        {
+          "id": "gl-draw-line",
+          "type": "line",
+          "filter": ["all", ["==", "$type", "LineString"], ["!=", "mode", "static"]],
+          "layout": {
+            "line-cap": "round",
+            "line-join": "round"
+          },
+          "paint": {
+            "line-color": "#D20C0C",
+            "line-dasharray": [0.2, 2],
+            "line-width": 4
+          }
+        },
+        {
+          "id": "gl-draw-polygon-fill",
+          "type": "fill",
+          "filter": ["all", ["==", "$type", "Polygon"], ["!=", "mode", "static"]],
+          "paint": {
+            "fill-color": "#D20C0C",
+            "fill-outline-color": "#D20C0C",
+            "fill-opacity": 0.1
+          }
+        },
+        {
+          "id": "gl-draw-polygon-stroke-active",
+          "type": "line",
+          "filter": ["all", ["==", "$type", "Polygon"], ["!=", "mode", "static"]],
+          "layout": {
+            "line-cap": "round",
+            "line-join": "round"
+          },
+          "paint": {
+            "line-color": "#D20C0C",
+            "line-dasharray": [0.2, 2],
+            "line-width": 4
+          }
+        }
+      ]
+    });
+    map.addControl(draw);
+
+    // Set up event listeners for the buttons in the sidebar
+    document.getElementById('draw-line').addEventListener('click', function() {
+      draw.changeMode('draw_line_string');
+    });
+
+    document.getElementById('draw-polygon').addEventListener('click', function() {
+      draw.changeMode('draw_polygon');
+    });
+
+    document.getElementById('export').addEventListener('click', function() {
+      var data = draw.getAll();
+      if (data.features.length > 0) {
+        var blob = new Blob([JSON.stringify(data)], {type: "application/json"});
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = 'drawing.geojson';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      } else {
+        alert("No features drawn. Please draw a polyline or polygon first.");
+      }
+    });
+
+    // Import functionality
+    document.getElementById('import').addEventListener('click', function() {
+      document.getElementById('file-input').click();
+    });
+
+    document.getElementById('file-input').addEventListener('change', function(e) {
+      const file = e.target.files[0];
+      const reader = new FileReader();
+      
+      reader.onload = function(e) {
+        const geojson = JSON.parse(e.target.result);
+        const layerId = 'imported-' + Date.now();
+        
+        // Add the layer to the map
+        map.addSource(layerId, {
+          type: 'geojson',
+          data: geojson
+        });
+
+        // Add fill layer for polygons
+        map.addLayer({
+          id: layerId + '-fill',
+          type: 'fill',
+          source: layerId,
+          paint: {
+            'fill-color': '#088',
+            'fill-opacity': 0.4
+          },
+          filter: ['==', '$type', 'Polygon']
+        });
+
+        // Add line layer for both polygons and lines
+        map.addLayer({
+          id: layerId + '-line',
+          type: 'line',
+          source: layerId,
+          paint: {
+            'line-color': '#088',
+            'line-width': 2
+          }
+        });
+
+        // Add layer toggle to the layers panel
+        const layersDiv = document.getElementById('layers-list');
+        const toggleDiv = document.createElement('div');
+        toggleDiv.innerHTML = `
+          <input type="checkbox" id="${layerId}-toggle" class="layer-toggle" checked>
+          <label for="${layerId}-toggle">${file.name}</label>
+        `;
+        layersDiv.appendChild(toggleDiv);
+
+        // Add event listener for the toggle
+        document.getElementById(`${layerId}-toggle`).addEventListener('change', function(e) {
+          const visibility = e.target.checked ? 'visible' : 'none';
+          map.setLayoutProperty(layerId + '-fill', 'visibility', visibility);
+          map.setLayoutProperty(layerId + '-line', 'visibility', visibility);
+        });
+      };
+
+      reader.readAsText(file);
+      this.value = ''; // Reset file input
+    });
+  </script>
+</body>
+</html>
