@@ -1,0 +1,671 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>DESIGN PORTAL</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link href="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css" rel="stylesheet" />
+  <link href="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-draw/v1.4.2/mapbox-gl-draw.css" rel="stylesheet" />
+  <link href="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-geocoder/v5.0.0/mapbox-gl-geocoder.css" rel="stylesheet" type="text/css">
+  <script src="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-geocoder/v5.0.0/mapbox-gl-geocoder.min.js"></script>
+  <style>
+    body { margin: 0; padding: 0; font-family: 'Times New Roman', Times, serif; }
+    
+    #header {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 50px;
+      background: #494747;
+      color: #070124;
+      line-height: 50px;
+      padding-left: 600px;
+      z-index: 2;
+      font-size: 25px;
+    }
+
+    #map {
+      position: absolute;
+      top: 50px;
+      left: 150px;
+      right: 0;
+      bottom: 0;
+    }
+
+    .mapboxgl-ctrl-geocoder {
+      position: absolute;
+      top: 10px;
+      left: 50px;  /* Position it next to sidebar with some margin */
+      z-index: 2;
+      width: 300px !important;
+    }
+
+    .mapboxgl-ctrl-geocoder input[type='text'] {
+      font-size: 15px;
+      width: 100%;
+    }
+
+    .mapboxgl-ctrl-geocoder--suggestion-title {
+      font-weight: bold;
+    }
+
+    .mapboxgl-ctrl-geocoder--suggestion-address {
+      font-size: 12px;
+    }
+
+    #layers-panel {
+      margin-top: 20px;
+      color: rgb(50, 48, 48);
+    }
+
+    #layers-list div {
+      margin: 8px 0;
+    }
+
+    .layer-toggle {
+      margin-right: 8px;
+    }
+
+    .grade-label .mapboxgl-popup-content {
+      background: rgba(188, 177, 177, 0.8);
+      padding: 3px 6px;
+      border-radius: 3px;
+      font-size: 10px;
+      text-align: center;
+      min-width: auto;
+      line-height: 1;
+      transition: opacity 3.5s ease-in-out;
+    }
+
+    .area-label .mapboxgl-popup-content {
+      background: rgba(255, 255, 255, 0.2);
+      padding: 2px 4px;
+      border-radius: 2px;
+      font-size: 10px;
+      text-align: center;
+      min-width: auto;
+      width: fit-content;
+      line-height: 1;
+      margin: 0;
+      transition: opacity 0.5s ease-in-out;
+    }
+
+    .area-label .mapboxgl-popup-tip {
+      display: none; /* Hide the default popup arrow */
+    }
+
+    #sidebar {
+      position: absolute;
+      top: 50px;
+      left: 0;
+      width: 150px;
+      bottom: 0;
+      background: #7d7b7b;
+      padding: 10px;
+      z-index: 1;
+    }
+
+    #sidebar button {
+      display: block;
+      width: 100%;
+      margin: 5px 0;
+      padding: 8px;
+      background: #4a4a4a;
+      color: white;
+      border: none;
+      border-radius: 3px;
+      cursor: pointer;
+    }
+
+    #sidebar button:hover {
+      background: #666;
+    }
+
+    .mapbox-gl-draw_ctrl-draw-btn {
+        border: none;
+        cursor: pointer;
+        display: block;
+        width: 30px;
+        height: 30px;
+        background: #fff;
+        padding: 2px;
+        font-size: 20px;
+        text-align: center;
+        font-weight: bold;
+        border-radius: 4px;
+    }
+
+    .mapbox-gl-draw_ctrl-draw-btn:hover {
+        background-color: #1d1b1b;
+    }
+  </style>
+</head>
+<body>
+  <div id="header">Design Portal</div>
+  <div id="sidebar">
+    <button id="draw-line">Draw Polyline</button>
+    <button id="draw-polygon">Draw Polygon</button>
+    <button id="export">Export as GeoJSON</button>
+    <button id="import">Import GeoJSON</button>
+    <input type="file" id="file-input" style="display: none;" accept=".geojson,application/json">
+    <div id="layers-panel">
+      <h3>Layers</h3>
+      <div id="layers-list"></div>
+    </div>
+  </div>
+  <div id="map"></div>
+
+  <!-- Mapbox GL JS -->
+  <script src="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js"></script>
+  <!-- Mapbox GL Draw -->
+  <script src="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-draw/v1.4.2/mapbox-gl-draw.js"></script>
+  <!-- Turf.js for distance calculations -->
+  <script src="https://unpkg.com/@turf/turf@6.5.0/turf.min.js"></script>
+
+  <script>
+    mapboxgl.accessToken = 'pk.eyJ1Ijoic2Nocm9kZXItaGlsbCIsImEiOiJjbHpmdW5ibXUxY3I1MmtvbXU3c2t0aHhoIn0.D_W59ZKzQSJf7WF8Cfhm3w';
+
+    // 1. Initialize the map
+    const map = new mapboxgl.Map({
+      container: 'map',
+      style: 'mapbox://styles/mapbox/satellite-streets-v12', 
+      hash: true,
+      center: [173.95, -41.5],
+      zoom: 5.
+    });
+
+    // 2. Initialize Mapbox GL Draw
+    const draw = new MapboxDraw({
+    displayControlsDefault: false,
+    controls: {
+        trash: true,        // Re-enable trash can
+        point: false,
+        line_string: false,
+        polygon: false,
+        combine_features: false,
+        uncombine_features: false
+    },
+    styles: [
+      {
+        "id": "gl-draw-line",
+        "type": "line",
+        "filter": ["all", ["==", "$type", "LineString"], ["!=", "mode", "static"]],
+        "layout": { "line-cap": "round", "line-join": "round" },
+        "paint": {
+          "line-color": "#D20C0C",
+          "line-dasharray": [0.2, 2],
+          "line-width": 4
+        }
+      },
+      {
+        "id": "gl-draw-polygon-fill",
+        "type": "fill",
+        "filter": ["all", ["==", "$type", "Polygon"], ["!=", "mode", "static"]],
+        "paint": {
+          "fill-color": "#D20C0C",
+          "fill-outline-color": "#D20C0C",
+          "fill-opacity": 0.1
+        }
+      },
+      {
+        "id": "gl-draw-polygon-stroke-active",
+        "type": "line",
+        "filter": ["all", ["==", "$type", "Polygon"], ["!=", "mode", "static"]],
+        "layout": { "line-cap": "round", "line-join": "round" },
+        "paint": {
+          "line-color": "#D20C0C",
+          "line-dasharray": [0.2, 2],
+          "line-width": 4
+        }
+      }
+    ]
+});
+    map.addControl(draw);
+
+    // 3. Button event listeners for Draw modes
+    document.getElementById('draw-line').addEventListener('click', () => {
+      draw.changeMode('draw_line_string');
+    });
+    document.getElementById('draw-polygon').addEventListener('click', () => {
+      draw.changeMode('draw_polygon');
+    });
+
+    // 4. Export drawn features as GeoJSON
+    document.getElementById('export').addEventListener('click', () => {
+      const data = draw.getAll();
+      if (data.features.length > 0) {
+        const blob = new Blob([JSON.stringify(data)], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'drawing.geojson';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      } else {
+        alert("No features drawn. Please draw a polyline or polygon first.");
+      }
+    });
+
+    // 5. Import GeoJSON and add as a new layer with toggles
+    document.getElementById('import').addEventListener('click', () => {
+      document.getElementById('file-input').click();
+    });
+
+    document.getElementById('file-input').addEventListener('change', function(e) {
+      const file = e.target.files[0];
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const geojson = JSON.parse(e.target.result);
+        const layerId = 'imported-' + Date.now();
+        
+        // Add source and layers
+        map.addSource(layerId, { type: 'geojson', data: geojson });
+        map.addLayer({
+          id: layerId + '-fill',
+          type: 'fill',
+          source: layerId,
+          paint: { 'fill-color': '#088', 'fill-opacity': 0.4 },
+          filter: ['==', '$type', 'Polygon']
+        });
+        map.addLayer({
+          id: layerId + '-line',
+          type: 'line',
+          source: layerId,
+          paint: { 'line-color': '#088', 'line-width': 2 }
+        });
+
+        // Add layer toggle control
+        const toggleDiv = document.createElement('div');
+        toggleDiv.innerHTML = `
+          <input type="checkbox" id="${layerId}-toggle" class="layer-toggle" checked>
+          <label for="${layerId}-toggle">${file.name}</label>
+        `;
+        document.getElementById('layers-list').appendChild(toggleDiv);
+
+        // Add toggle event listener
+        document.getElementById(`${layerId}-toggle`).addEventListener('change', function(e) {
+          const vis = e.target.checked ? 'visible' : 'none';
+          map.setLayoutProperty(layerId + '-fill', 'visibility', vis);
+          map.setLayoutProperty(layerId + '-line', 'visibility', vis);
+        });
+      };
+      reader.readAsText(file);
+      this.value = '';
+    });
+
+    // 6. Predefined GeoJSON layers with toggles
+    /*const geojsonLayers = {
+      "Test layer 2": { data: test2, color: '#e41a1c' },
+      "test3": { data: test3, color: '#377eb8' },
+      "test4": { data: test4, color: '#4daf4a' },
+      "test5": { data: test5, color: '#984ea3' }
+    };*/
+
+    // 7. Once the map loads, add DEM source, terrain, hillshade, and predefined layers
+    map.on('load', () => {
+      // 7a. Add the raster-DEM source for elevation queries
+      map.addSource('mapbox-dem', {
+        type: 'raster-dem',
+        url: 'mapbox://mapbox.terrain-rgb',
+        tileSize: 512,
+        maxzoom: 14
+      });
+      // 7b. Enable terrain for queryTerrainElevation
+      map.setTerrain({ source: 'mapbox-dem', exaggeration: 1 });
+      // 7c. Optional: hillshade layer to visualize terrain
+      map.addLayer(
+        {
+          id: 'hillshade',
+          source: 'mapbox-dem',
+          type: 'hillshade',
+          paint: {}
+        },
+        'waterway-label'
+      );
+
+      // 7d. Add each predefined GeoJSON layer and its toggle control
+      /*Object.entries(geojsonLayers).forEach(([id, { data, color }]) => {
+        map.addSource(id, { type: 'geojson', data });
+        map.addLayer({
+          id: id + '-fill',
+          type: 'fill',
+          source: id,
+          paint: { 'fill-color': color, 'fill-opacity': 0.4 },
+          filter: ['==', '$type', 'Polygon']
+        });
+        map.addLayer({
+          id: id + '-line',
+          type: 'line',
+          source: id,
+          paint: { 'line-color': color, 'line-width': 2 }
+        });
+        const toggleDiv = document.createElement('div');
+        toggleDiv.innerHTML = `<input type="checkbox" id="${id}-toggle" class="layer-toggle" checked>
+                               <label for="${id}-toggle">${id}</label>`;
+        document.getElementById('layers-list').appendChild(toggleDiv);
+        document.getElementById(`${id}-toggle`).addEventListener('change', function (e) {
+          const vis = e.target.checked ? 'visible' : 'none';
+          map.setLayoutProperty(id + '-fill', 'visibility', vis);
+          map.setLayoutProperty(id + '-line', 'visibility', vis);
+        });
+      });*/
+    });
+
+    // Add this after the map initialization
+const geocoder = new MapboxGeocoder({
+    accessToken: mapboxgl.accessToken,
+    mapboxgl: mapboxgl,
+    placeholder: 'Search for a location in NZ',
+    proximity: {
+        longitude: 173.95,
+        latitude: -41.5
+    },
+    countries: 'nz',
+    zoom:10,
+    flyTo: {
+        speed: 4.2,
+        curve: .5,
+        easing: function(t) {
+            return t;
+        }
+    }
+});
+
+map.addControl(geocoder, 'top-left');
+
+    // 7e. Add geocoder control
+
+    // Optional: Add a loading indicator
+    map.on('load', () => {
+      // ...existing code...
+      
+      // Add loading indicator for geocoder
+      geocoder.on('result', () => {
+        map.once('moveend', () => {
+            console.log('Arrived at search location');
+        });
+      });
+    });
+
+    // 8. Set up grade calculation popups
+    let gradePopup = null;
+
+    // Listen for all drawing events that need grade calculations
+    map.on('draw.render', () => {
+    if (draw.getMode() !== 'draw_line_string') return;
+    
+    const features = draw.getAll().features;
+    const activeFeature = features[features.length - 1];
+    
+    if (!activeFeature || activeFeature.geometry.type !== 'LineString') return;
+    
+    const coords = activeFeature.geometry.coordinates;
+    if (coords.length < 2) return;
+
+    // Calculate grade for the last segment
+    const [lng2, lat2] = coords[coords.length - 1];
+    const [lng1, lat1] = coords[coords.length - 2];
+
+    // Query elevations
+    const elev1 = map.queryTerrainElevation([lng1, lat1]);
+    const elev2 = map.queryTerrainElevation([lng2, lat2]);
+    
+    if (elev1 === null || elev2 === null) return;
+
+    // Calculate grade
+    const from = turf.point([lng1, lat1]);
+    const to = turf.point([lng2, lat2]);
+    const distKm = turf.distance(from, to, { units: 'kilometers' });
+    const distM = distKm * 1000;
+    
+    if (distM === 0) return;
+
+    const rise = elev2 - elev1;
+    const gradePercent = (rise / distM) * 100;
+    const sign = gradePercent >= 0 ? '+' : '–';
+    const gradeText = `${sign}${Math.abs(gradePercent).toFixed(1)}%`;
+
+    // Remove existing popup
+    if (gradePopup) gradePopup.remove();
+
+    // Create new popup
+    gradePopup = new mapboxgl.Popup({
+        closeButton: false,
+        closeOnClick: false,
+        className: 'grade-label',
+        anchor: 'bottom',
+        offset: [0, 0]
+    })
+        .setLngLat([lng2, lat2])
+        .setHTML(gradeText)
+        .addTo(map);
+
+    // Fade out popup
+    setTimeout(() => {
+        if (gradePopup) {
+            gradePopup.getElement().style.opacity = '0';
+            setTimeout(() => {
+                if (gradePopup) {
+                    gradePopup.remove();
+                    gradePopup = null;
+                }
+            }, 500);
+        }
+    }, 2500);
+});
+
+    // Remove these event listeners as they're now redundant
+    // map.on('draw.create', (e) => { ... });
+    // map.on('draw.update', (e) => { ... });
+
+    // Replace the existing area calculation code with this updated version
+
+let areaPopup = null;
+
+// Listen for polygon updates during drawing
+map.on('draw.render', () => {
+    if (draw.getMode() !== 'draw_polygon') return;
+    
+    const features = draw.getAll().features;
+    const activeFeature = features[features.length - 1];
+    
+    if (!activeFeature || activeFeature.geometry.type !== 'Polygon') return;
+    
+    // Calculate area even for incomplete polygons
+    const coords = activeFeature.geometry.coordinates[0];
+    if (coords.length < 3) return;
+
+    // Create a temporary polygon for area calculation
+    const tempPolygon = turf.polygon([coords]);
+    const area = turf.area(tempPolygon);
+    const areaText = `${Math.round(area)}m²`;
+
+    // Calculate centroid for popup placement
+    const centroid = turf.centroid(tempPolygon);
+
+    // Remove existing popup before creating new one
+    if (areaPopup) areaPopup.remove();
+    
+    // Create new popup
+    areaPopup = new mapboxgl.Popup({
+        closeButton: false,
+        closeOnClick: false,
+        className: 'area-label',
+        anchor: 'center',
+        offset: [0, 0]
+    })
+        .setLngLat(centroid.geometry.coordinates)
+        .setHTML(areaText)
+        .addTo(map);
+
+    // Fade out popup
+    setTimeout(() => {
+        if (areaPopup && draw.getMode() === 'draw_polygon') {
+            areaPopup.getElement().style.opacity = '0';
+            setTimeout(() => {
+                if (areaPopup && draw.getMode() === 'draw_polygon') {
+                    areaPopup.remove();
+                    areaPopup = null;
+                }
+            }, 500);
+        }
+    }, 2500);
+});
+
+// Handle completed polygons
+map.on('draw.create', (e) => {
+    if (e.features[0].geometry.type === 'Polygon') {
+        const feature = e.features[0];
+        const area = turf.area(feature);
+        const areaText = `${Math.round(area)}m²`;
+        const centroid = turf.centroid(feature);
+
+        // Create permanent label for completed polygon
+        if (areaPopup) areaPopup.remove();
+        
+        areaPopup = new mapboxgl.Popup({
+            closeButton: false,
+            closeOnClick: false,
+            className: 'area-label',
+            anchor: 'center',
+            offset: [0, 0]
+        })
+            .setLngLat(centroid.geometry.coordinates)
+            .setHTML(areaText)
+            .addTo(map);
+    }
+});
+
+// Update area when polygon is modified
+map.on('draw.update', (e) => {
+    if (e.features[0].geometry.type === 'Polygon') {
+        const feature = e.features[0];
+        const area = turf.area(feature);
+        const areaText = `${Math.round(area)}m²`;
+        const centroid = turf.centroid(feature);
+
+        if (areaPopup) areaPopup.remove();
+        
+        areaPopup = new mapboxgl.Popup({
+            closeButton: false,
+            closeOnClick: false,
+            className: 'area-label',
+            anchor: 'center',
+            offset: [0, 0]
+        })
+            .setLngLat(centroid.geometry.coordinates)
+            .setHTML(areaText)
+            .addTo(map);
+    }
+});
+
+// Add this event listener to handle polygon completion
+map.on('draw.create', (e) => {
+    const feature = e.features[0];
+    const featureType = feature.geometry.type;
+    const layerId = `drawn-${featureType}-${Date.now()}`;
+    
+    // Add to layers panel
+    const toggleDiv = document.createElement('div');
+    const displayName = featureType === 'LineString' ? 'Line' : 'Polygon';
+    toggleDiv.innerHTML = `
+        <input type="checkbox" id="${layerId}-toggle" class="layer-toggle" checked>
+        <label for="${layerId}-toggle">Drawn ${displayName}</label>
+    `;
+    document.getElementById('layers-list').appendChild(toggleDiv);
+
+    // Add toggle functionality
+    document.getElementById(`${layerId}-toggle`).addEventListener('change', function(e) {
+        const features = draw.getAll();
+        if (e.target.checked) {
+            // Show feature
+            draw.add(feature);
+        } else {
+            // Hide feature
+            draw.delete(feature.id);
+        }
+    });
+
+    // Store the feature ID for later reference
+    toggleDiv.dataset.featureId = feature.id;
+});
+
+// Add this to handle feature deletion
+map.on('draw.delete', (e) => {
+    // Remove corresponding toggle from layers panel
+    const toggles = document.querySelectorAll('.layer-toggle');
+    toggles.forEach(toggle => {
+        const toggleDiv = toggle.parentElement;
+        const featureId = toggleDiv.dataset.featureId;
+        if (e.features.find(f => f.id === featureId)) {
+            toggleDiv.remove();
+        }
+    });
+});
+
+// Add after the draw mode event listeners
+
+// Replace the existing backspace handler with this updated version
+
+document.addEventListener('keydown', (e) => {
+    // Only handle backspace key and only during line drawing
+    if (e.key === 'Backspace' && draw.getMode() === 'draw_line_string') {
+        e.preventDefault(); // Prevent the default backspace behavior
+        
+        const features = draw.getAll().features;
+        const currentLine = features[features.length - 1];
+        
+        if (currentLine && currentLine.geometry.type === 'LineString') {
+            const coords = currentLine.geometry.coordinates;
+            
+            // Only remove vertex if we have more than 2 points
+            if (coords.length > 1) {
+                // Create new feature with one less vertex
+                const newFeature = {
+                    id: currentLine.id,
+                    type: 'Feature',
+                    properties: currentLine.properties,
+                    geometry: {
+                        type: 'LineString',
+                        coordinates: coords.slice(0, -1)
+                    }
+                };
+                
+                // Replace the current line with the updated one
+                draw.add(newFeature);
+            }
+        }
+    }
+});
+
+// Add after your other event listeners
+
+document.getElementById('undo-vertex').addEventListener('click', () => {
+    if (draw.getMode() === 'draw_line_string') {
+        const features = draw.getAll().features;
+        const currentLine = features[features.length - 1];
+        
+        if (currentLine && currentLine.geometry.type === 'LineString') {
+            const coords = currentLine.geometry.coordinates;
+            
+            if (coords.length > 1) {
+                const newFeature = {
+                    id: currentLine.id,
+                    type: 'Feature',
+                    properties: currentLine.properties,
+                    geometry: {
+                        type: 'LineString',
+                        coordinates: coords.slice(0, -1)
+                    }
+                };
+                draw.add(newFeature);
+            }
+        }
+    }
+});
+  </script>
+</body>
+</html>
