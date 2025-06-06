@@ -327,6 +327,28 @@
         'waterway-label'
       );
 
+      // Add source for vertices
+      map.addSource('vertices', {
+        type: 'geojson',
+        data: {
+            type: 'FeatureCollection',
+            features: []
+        }
+      });
+
+      // Add vertex layer
+      map.addLayer({
+        id: 'vertices',
+        type: 'circle',
+        source: 'vertices',
+        paint: {
+            'circle-radius': 5,
+            'circle-color': '#ffffff',
+            'circle-stroke-color': '#D20C0C',
+            'circle-stroke-width': 2
+        }
+      });
+
       // 7d. Add each predefined GeoJSON layer and its toggle control
       /*Object.entries(geojsonLayers).forEach(([id, { data, color }]) => {
         map.addSource(id, { type: 'geojson', data });
@@ -563,13 +585,13 @@ map.on('draw.update', (e) => {
     }
 });
 
-// Add this event listener to handle polygon completion
+// Replace the draw.create event listener with this updated version:
 map.on('draw.create', (e) => {
     const feature = e.features[0];
     const featureType = feature.geometry.type;
     const layerId = `drawn-${featureType}-${Date.now()}`;
-    
-    // Add to layers panel
+
+    // Create layer toggle div with a trash can icon for deletion
     const toggleDiv = document.createElement('div');
     const displayName = featureType === 'LineString' ? 'Line' : 'Polygon';
     toggleDiv.innerHTML = `
@@ -578,93 +600,135 @@ map.on('draw.create', (e) => {
     `;
     document.getElementById('layers-list').appendChild(toggleDiv);
 
-    // Add toggle functionality
-    document.getElementById(`${layerId}-toggle`).addEventListener('change', function(e) {
-        const features = draw.getAll();
-        if (e.target.checked) {
-            // Show feature
-            draw.add(feature);
-        } else {
-            // Hide feature
+    // If someone unchecks the toggle, we immediately delete the feature
+    document.getElementById(`${layerId}-toggle`).addEventListener('change', (e) => {
+        if (!e.target.checked) {
             draw.delete(feature.id);
         }
     });
 
-    // Store the feature ID for later reference
+    // Store the feature ID on the container for later reference
     toggleDiv.dataset.featureId = feature.id;
 });
 
-// Add this to handle feature deletion
+// When a feature is deleted, remove its UI element from the layers panel
 map.on('draw.delete', (e) => {
-    // Remove corresponding toggle from layers panel
-    const toggles = document.querySelectorAll('.layer-toggle');
-    toggles.forEach(toggle => {
-        const toggleDiv = toggle.parentElement;
-        const featureId = toggleDiv.dataset.featureId;
-        if (e.features.find(f => f.id === featureId)) {
-            toggleDiv.remove();
-        }
+    e.features.forEach(feature => {
+        const toggles = document.querySelectorAll('.layer-toggle');
+        toggles.forEach(toggle => {
+            const toggleDiv = toggle.parentElement;
+            if (toggleDiv.dataset.featureId === feature.id) {
+                toggleDiv.remove();
+            }
+        });
     });
+    map.resize();
 });
 
-// Add after the draw mode event listeners
+// Intercept trash button click to delete all checked features
+document.querySelector('.mapbox-gl-draw_ctrl-draw-btn.mapbox-gl-draw_trash').addEventListener('click', function(e) {
+    // Prevent default Mapbox Draw trash behavior
+    e.stopPropagation();
+    e.preventDefault();
 
-// Replace the existing backspace handler with this updated version
+    // Find all checked layer toggles
+    const checkedToggles = document.querySelectorAll('.layer-toggle:checked');
+    const idsToDelete = [];
+    checkedToggles.forEach(toggle => {
+        const featureId = toggle.parentElement.dataset.featureId;
+        if (featureId) idsToDelete.push(featureId);
+    });
 
-document.addEventListener('keydown', (e) => {
-    // Only handle backspace key and only during line drawing
-    if (e.key === 'Backspace' && draw.getMode() === 'draw_line_string') {
-        e.preventDefault(); // Prevent the default backspace behavior
-        
-        const features = draw.getAll().features;
-        const currentLine = features[features.length - 1];
-        
-        if (currentLine && currentLine.geometry.type === 'LineString') {
-            const coords = currentLine.geometry.coordinates;
-            
-            // Only remove vertex if we have more than 2 points
-            if (coords.length > 1) {
-                // Create new feature with one less vertex
-                const newFeature = {
-                    id: currentLine.id,
-                    type: 'Feature',
-                    properties: currentLine.properties,
-                    geometry: {
-                        type: 'LineString',
-                        coordinates: coords.slice(0, -1)
-                    }
-                };
-                
-                // Replace the current line with the updated one
-                draw.add(newFeature);
-            }
-        }
+    // Delete all checked features
+    if (idsToDelete.length > 0) {
+        draw.delete(idsToDelete);
     }
 });
 
-// Add after your other event listeners
-
-document.getElementById('undo-vertex').addEventListener('click', () => {
-    if (draw.getMode() === 'draw_line_string') {
-        const features = draw.getAll().features;
-        const currentLine = features[features.length - 1];
-        
-        if (currentLine && currentLine.geometry.type === 'LineString') {
-            const coords = currentLine.geometry.coordinates;
-            
-            if (coords.length > 1) {
-                const newFeature = {
-                    id: currentLine.id,
+// Add this function to rebuild vertex display
+function updateVertices() {
+    const features = draw.getAll().features;
+    const vertexFeatures = [];
+    
+    features.forEach(feature => {
+        if (feature.geometry.type === 'LineString') {
+            feature.geometry.coordinates.forEach((coord, idx) => {
+                vertexFeatures.push({
                     type: 'Feature',
-                    properties: currentLine.properties,
                     geometry: {
-                        type: 'LineString',
-                        coordinates: coords.slice(0, -1)
+                        type: 'Point',
+                        coordinates: coord
+                    },
+                    properties: {
+                        id: feature.id,
+                        index: idx
                     }
-                };
-                draw.add(newFeature);
-            }
+                });
+            });
         }
+    });
+
+    map.getSource('vertices').setData({
+        type: 'FeatureCollection',
+        features: vertexFeatures
+    });
+}
+
+// Modify your draw.render event to update vertices
+map.on('draw.render', () => {
+    // ...existing grade calculation code...
+    updateVertices();
+});
+
+// Add vertex dragging functionality
+let draggedVertex = null;
+
+map.on('mousedown', 'vertices', (e) => {
+    if (e.features.length === 0) return;
+    
+    // Prevent propagation
+    e.preventDefault();
+    
+    // Store reference to the dragged vertex
+    draggedVertex = {
+        feature: draw.get(e.features[0].properties.id),
+        index: e.features[0].properties.index
+    };
+    
+    // Change cursor
+    map.getCanvas().style.cursor = 'grabbing';
+});
+
+map.on('mousemove', (e) => {
+    if (!draggedVertex) return;
+
+    // Update vertex position
+    const coords = draggedVertex.feature.geometry.coordinates;
+    coords[draggedVertex.index] = [e.lngLat.lng, e.lngLat.lat];
+    
+    // Update the feature
+    draw.add(draggedVertex.feature);
+    
+    // Update vertices display
+    updateVertices();
+});
+
+map.on('mouseup', () => {
+    if (!draggedVertex) return;
+    
+    // Reset cursor and clear reference
+    map.getCanvas().style.cursor = '';
+    draggedVertex = null;
+});
+
+// Add hover effect for vertices
+map.on('mouseover', 'vertices', () => {
+    map.getCanvas().style.cursor = 'grab';
+});
+
+map.on('mouseout', 'vertices', () => {
+    if (!draggedVertex) {
+        map.getCanvas().style.cursor = '';
     }
 });
   </script>
