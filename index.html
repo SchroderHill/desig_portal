@@ -299,32 +299,74 @@
     map.on('mouseover', 'vertices', () => map.getCanvas().style.cursor = 'grab');
     map.on('mouseout', 'vertices', () => { if (!draggedVertex) map.getCanvas().style.cursor = ''; });
 
-    // Layer toggle / deletion logic
+    // Layer toggle / selection logic
     map.on('draw.create', e => {
       const f = e.features[0];
       const layerId = `drawn-${f.geometry.type}-${Date.now()}`;
       const toggleDiv = document.createElement('div');
       const displayName = f.geometry.type === 'LineString' ? 'Line' : 'Polygon';
-      toggleDiv.innerHTML = `<input type="checkbox" id="${layerId}-toggle" class="layer-toggle" checked><label for="${layerId}-toggle">Drawn ${displayName}</label>`;
+      
+      // Create the toggle div with a data attribute for the feature ID
+      toggleDiv.setAttribute('data-feature-id', f.id);
+      toggleDiv.innerHTML = `<input type="checkbox" id="${layerId}-toggle" class="layer-toggle">
+                            <label for="${layerId}-toggle">Drawn ${displayName}</label>`;
+      
       document.getElementById('layers-list').appendChild(toggleDiv);
-      document.getElementById(`${layerId}-toggle`).addEventListener('change', ev => { if (!ev.target.checked) draw.delete(f.id); });
-      toggleDiv.dataset.featureId = f.id;
+      
+      // Checkbox now only controls selection
+      document.getElementById(`${layerId}-toggle`).addEventListener('change', ev => {
+        if (ev.target.checked) {
+          draw.changeMode('simple_select', { featureIds: [f.id] });
+        } else {
+          draw.changeMode('simple_select', { featureIds: [] });
+        }
+      });
+      
       updateGradeLabels();
     });
+
+    // Handle deletion events from MapboxDraw
     map.on('draw.delete', e => {
-      e.features.forEach(ft => { document.querySelectorAll('.layer-toggle').forEach(tg => { if (tg.parentElement.dataset.featureId === ft.id) tg.parentElement.remove(); }); });
-      updateGradeLabels(); map.resize();
+      e.features.forEach(feature => {
+        const toggleDiv = document.querySelector(`[data-feature-id="${feature.id}"]`);
+        if (toggleDiv) toggleDiv.remove();
+      });
+      updateGradeLabels();
+      map.resize();
     });
 
-    // Custom trash button
+    // Custom trash button - modified to delete only selected features
     const trashBtn = document.querySelector('.mapbox-gl-draw_ctrl-draw-btn.mapbox-gl-draw_trash');
     if (trashBtn) {
       trashBtn.addEventListener('click', ev => {
-        ev.stopPropagation(); ev.preventDefault();
-        const idsToDelete = Array.from(document.querySelectorAll('.layer-toggle:checked')).map(t => t.parentElement.dataset.featureId).filter(Boolean);
-        if (idsToDelete.length) draw.delete(idsToDelete);
+        ev.stopPropagation();
+        ev.preventDefault();
+        
+        // Get selected features
+        const selectedFeatures = draw.getSelected();
+        if (selectedFeatures.features.length > 0) {
+          draw.delete(selectedFeatures.features.map(f => f.id));
+        }
       });
     }
+
+    // Update checkboxes when features are selected/deselected
+    map.on('draw.selectionchange', e => {
+      // Uncheck all checkboxes first
+      document.querySelectorAll('.layer-toggle').forEach(checkbox => {
+        checkbox.checked = false;
+      });
+      
+      // Check boxes for selected features
+      const selected = e.features;
+      selected.forEach(feature => {
+        const toggleDiv = document.querySelector(`[data-feature-id="${feature.id}"]`);
+        if (toggleDiv) {
+          const checkbox = toggleDiv.querySelector('.layer-toggle');
+          if (checkbox) checkbox.checked = true;
+        }
+      });
+    });
   </script>
 </body>
 </html>
