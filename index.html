@@ -34,7 +34,7 @@
   <div id="sidebar">
     <button id="draw-line">Draw Polyline</button>
     <button id="draw-polygon">Draw Polygon</button>
-    <button id="export">Export as GeoJSON</button>
+    <button id="export">Export</button>
     <button id="import">Import GeoJSON</button>
     <input type="file" id="file-input" style="display: none;" accept=".geojson,application/json">
     <div id="layers-panel">
@@ -127,7 +127,17 @@
     map.addControl(draw);
 
     // --- GEOCODER CONTROL ---
-    const geocoder = new MapboxGeocoder({ accessToken: mapboxgl.accessToken, mapboxgl, placeholder: 'Search for a location in NZ', proximity: { longitude: 173.95, latitude: -41.5 }, countries: 'nz', zoom: 10, flyTo: { speed: 4.2, curve: 0.5, easing: t => t } });
+    const geocoder = new MapboxGeocoder({
+      accessToken: mapboxgl.accessToken,
+      mapboxgl: mapboxgl,
+      placeholder: 'Search for any location',
+      flyTo: {
+        speed: 1.2,
+        curve: 1,
+        easing: t => t
+      }
+    });
+
     map.addControl(geocoder, 'top-left');
 
     // Buttons for draw modes
@@ -160,12 +170,26 @@
     // --- EXPORT / IMPORT GEOJSON (unchanged) ---
     document.getElementById('export').addEventListener('click', () => {
       const data = draw.getAll();
-      if (data.features.length) {
-        const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
+      if (data.features.length === 0) {
+        alert('No features to export. Draw something first.');
+        return;
+      }
+
+      try {
+        const kmlContent = geojsonToKML(data.features);
+        const blob = new Blob([kmlContent], { type: 'application/vnd.google-earth.kml+xml' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
-        a.href = url; a.download = 'drawing.geojson'; a.click(); URL.revokeObjectURL(url);
-      } else { alert('No features drawn. Please draw something first.'); }
+        a.href = url;
+        a.download = 'design_export.kml';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      } catch (error) {
+        console.error('Export failed:', error);
+        alert('Export failed. Please try again.');
+      }
     });
 
     document.getElementById('import').addEventListener('click', () => document.getElementById('file-input').click());
@@ -296,8 +320,26 @@
     map.on('mousedown', 'vertices', e => { if (!e.features.length) return; draggedVertex = { feature: draw.get(e.features[0].properties.id), index: e.features[0].properties.index }; map.getCanvas().style.cursor = 'grabbing'; });
     map.on('mousemove', e => { if (!draggedVertex) return; const coords = draggedVertex.feature.geometry.coordinates; coords[draggedVertex.index] = [e.lngLat.lng, e.lngLat.lat]; draw.add(draggedVertex.feature); updateVertices(); });
     map.on('mouseup', () => { if (draggedVertex) { map.getCanvas().style.cursor = ''; draggedVertex = null; } });
-    map.on('mouseover', 'vertices', () => map.getCanvas().style.cursor = 'grab');
-    map.on('mouseout', 'vertices', () => { if (!draggedVertex) map.getCanvas().style.cursor = ''; });
+    map.on('mouseover', 'vertices', () => {
+      map.getCanvas().style.cursor = 'move'; // Shows 4-sided arrow cursor
+    });
+
+    map.on('mouseout', 'vertices', () => {
+      if (!draggedVertex) {
+        map.getCanvas().style.cursor = '';
+      }
+    });
+
+    map.on('mousedown', 'vertices', () => {
+      map.getCanvas().style.cursor = 'grabbing'; // Changes to grabbing while dragging
+    });
+
+    map.on('mouseup', () => {
+      if (draggedVertex) {
+        map.getCanvas().style.cursor = '';
+        draggedVertex = null;
+      }
+    });
 
     // Layer toggle / selection logic
     map.on('draw.create', e => {
@@ -367,6 +409,55 @@
         }
       });
     });
+
+    // Add this KML conversion utility function
+function geojsonToKML(features) {
+  const kmlStart = `<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>Design Portal Export</name>
+    <Style id="lineStyle">
+      <LineStyle>
+        <color>ffD20C0C</color>
+        <width>3</width>
+      </LineStyle>
+    </Style>
+    <Style id="polyStyle">
+      <LineStyle>
+        <color>ffD20C0C</color>
+        <width>2</width>
+      </LineStyle>
+      <PolyStyle>
+        <color>40D20C0C</color>
+      </PolyStyle>
+    </Style>`;
+
+  const kmlEnd = `
+  </Document>
+</kml>`;
+
+  const placemarks = features.map((feature, index) => {
+    const isLine = feature.geometry.type === 'LineString';
+    const coords = isLine ? 
+      feature.geometry.coordinates : 
+      feature.geometry.coordinates[0];
+
+    return `
+    <Placemark>
+      <name>${isLine ? 'Line' : 'Polygon'} ${index + 1}</name>
+      <styleUrl>${isLine ? '#lineStyle' : '#polyStyle'}</styleUrl>
+      <${isLine ? 'LineString' : 'Polygon'}>
+        ${!isLine ? '<outerBoundaryIs><LinearRing>' : ''}
+        <coordinates>
+          ${coords.map(c => `${c[0]},${c[1]},0`).join(' ')}
+        </coordinates>
+        ${!isLine ? '</LinearRing></outerBoundaryIs>' : ''}
+      </${isLine ? 'LineString' : 'Polygon'}>
+    </Placemark>`;
+  }).join('\n');
+
+  return kmlStart + placemarks + kmlEnd;
+}
   </script>
 </body>
 </html>
