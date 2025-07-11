@@ -307,6 +307,12 @@
           feature.geometry.coordinates.forEach((coord, idx) => {
             vertexFeatures.push({ type: 'Feature', geometry: { type: 'Point', coordinates: coord }, properties: { id: feature.id, index: idx } });
           });
+        } else if (feature.geometry.type === 'Polygon') {
+          feature.geometry.coordinates[0].forEach((coord, idx, arr) => {
+            // Skip duplicate closing vertex if it is identical to the first vertex
+            if (idx === arr.length - 1 && JSON.stringify(coord) === JSON.stringify(arr[0])) return;
+            vertexFeatures.push({ type: 'Feature', geometry: { type: 'Point', coordinates: coord }, properties: { id: feature.id, type: 'Polygon', index: idx } });
+          });
         }
       });
       map.getSource('vertices').setData({ type: 'FeatureCollection', features: vertexFeatures });
@@ -318,7 +324,18 @@
     // Vertex drag handlers
     let draggedVertex = null;
     map.on('mousedown', 'vertices', e => { if (!e.features.length) return; draggedVertex = { feature: draw.get(e.features[0].properties.id), index: e.features[0].properties.index }; map.getCanvas().style.cursor = 'grabbing'; });
-    map.on('mousemove', e => { if (!draggedVertex) return; const coords = draggedVertex.feature.geometry.coordinates; coords[draggedVertex.index] = [e.lngLat.lng, e.lngLat.lat]; draw.add(draggedVertex.feature); updateVertices(); });
+    map.on('mousemove', e => {
+      if (!draggedVertex) return;
+      const feature = draggedVertex.feature;
+      if (feature.geometry.type === 'Polygon') {
+        feature.geometry.coordinates[0][draggedVertex.index] = [e.lngLat.lng, e.lngLat.lat];
+      } else {
+        feature.geometry.coordinates[draggedVertex.index] = [e.lngLat.lng, e.lngLat.lat];
+      }
+      // Update the feature in Mapbox Draw
+      draw.add(feature);
+      updateVertices();
+    });
     map.on('mouseup', () => { if (draggedVertex) { map.getCanvas().style.cursor = ''; draggedVertex = null; } });
     map.on('mouseover', 'vertices', () => {
       map.getCanvas().style.cursor = 'move'; // Shows 4-sided arrow cursor
