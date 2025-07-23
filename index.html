@@ -32,8 +32,8 @@
 <body>
   <div id="header">Design Portal</div>
   <div id="sidebar">
-    <button id="draw-line">Draw Polyline</button>
-    <button id="draw-polygon">Draw Polygon</button>
+    <button id="draw-line">Draw Road</button>
+    <button id="draw-polygon">Draw Pad</button>
     <button id="export">Export</button>
     <button id="import">Import GeoJSON</button>
     <input type="file" id="file-input" style="display: none;" accept=".geojson,application/json">
@@ -141,8 +141,14 @@
     map.addControl(geocoder, 'top-left');
 
     // Buttons for draw modes
-    document.getElementById('draw-line').addEventListener('click', () => draw.changeMode('draw_line_string'));
-    document.getElementById('draw-polygon').addEventListener('click', () => draw.changeMode('draw_polygon'));
+    document.getElementById('draw-line').addEventListener('click', () => {
+      draw.changeMode('draw_line_string');
+      showToast("left click to start drawing<br>double click to stop drawing");
+    });
+    document.getElementById('draw-polygon').addEventListener('click', () => {
+      draw.changeMode('draw_polygon');
+      showToast("left click to start drawing<br>double click to stop drawing");
+    });
 
     // --- TERRAIN & CUSTOM SOURCES/LAYERS ---
     function addCustomLayers() {
@@ -474,6 +480,24 @@ function geojsonToKML(features) {
   }).join('\n');
 
   return kmlStart + placemarks + kmlEnd;
+}
+
+// Add toast functionality
+function showToast(message, duration = 3000) {
+  const toast = document.createElement('div');
+  toast.innerHTML = message;
+  toast.style.position = 'fixed';
+  toast.style.bottom = '20px';
+  toast.style.left = '50%';
+  toast.style.transform = 'translateX(-50%)';
+  toast.style.background = 'rgba(0,0,0,0.7)';
+  toast.style.color = '#fff';
+  toast.style.padding = '10px 20px';
+  toast.style.borderRadius = '5px';
+  toast.style.fontSize = '14px';
+  toast.style.zIndex = '9999';
+  document.body.appendChild(toast);
+  setTimeout(() => { toast.remove(); }, duration);
 }
   </script>
 </body>
