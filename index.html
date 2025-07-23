@@ -166,7 +166,7 @@
       // Grade‑label layer
       if (!map.getSource('grade-labels')) {
         map.addSource('grade-labels', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
-        map.addLayer({ id: 'grade-labels', type: 'symbol', source: 'grade-labels', layout: { 'text-field': ['get', 'grade'], 'text-size': 14, 'text-allow-overlap': true, 'text-ignore-placement': true, 'text-anchor': 'center' }, paint: { 'text-color': 'rgba(260,0,0,1)' } });
+        map.addLayer({ id: 'grade-labels', type: 'symbol', source: 'grade-labels', layout: { 'text-field': ['get', 'grade'], 'text-size': 18, 'text-allow-overlap': true, 'text-ignore-placement': true, 'text-anchor': 'center' }, paint: { 'text-color': 'rgba(260,0,0,1)' } });
       }
     }
 
@@ -364,31 +364,37 @@
       }
     });
 
-    // Layer toggle / selection logic
-    map.on('draw.create', e => {
-      const f = e.features[0];
-      const layerId = `drawn-${f.geometry.type}-${Date.now()}`;
-      const toggleDiv = document.createElement('div');
-      const displayName = f.geometry.type === 'LineString' ? 'Line' : 'Polygon';
-      
-      // Create the toggle div with a data attribute for the feature ID
-      toggleDiv.setAttribute('data-feature-id', f.id);
-      toggleDiv.innerHTML = `<input type="checkbox" id="${layerId}-toggle" class="layer-toggle">
-                            <label for="${layerId}-toggle">Drawn ${displayName}</label>`;
-      
-      document.getElementById('layers-list').appendChild(toggleDiv);
-      
-      // Checkbox now only controls selection
-      document.getElementById(`${layerId}-toggle`).addEventListener('change', ev => {
-        if (ev.target.checked) {
-          draw.changeMode('simple_select', { featureIds: [f.id] });
-        } else {
-          draw.changeMode('simple_select', { featureIds: [] });
-        }
-      });
-      
-      updateGradeLabels();
-    });
+    // Add global counters for layer naming
+let roadCount = 0;
+let padCount = 0;
+// Layer toggle / selection logic
+map.on('draw.create', e => {
+  const f = e.features[0];
+  let displayName;
+  if (f.geometry.type === 'LineString') {
+    roadCount++;
+    displayName = `Road ${roadCount}`;
+  } else {
+    padCount++;
+    displayName = `Pad ${padCount}`;
+  }
+  const layerId = `drawn-${f.geometry.type}-${Date.now()}`;
+  const toggleDiv = document.createElement('div');
+  // Create the toggle div with a data attribute for the feature ID
+  toggleDiv.setAttribute('data-feature-id', f.id);
+  toggleDiv.innerHTML = `<input type="checkbox" id="${layerId}-toggle" class="layer-toggle">
+                            <label for="${layerId}-toggle">${displayName}</label>`;
+  document.getElementById('layers-list').appendChild(toggleDiv);
+  // Checkbox now only controls selection
+  document.getElementById(`${layerId}-toggle`).addEventListener('change', ev => {
+    if (ev.target.checked) {
+      draw.changeMode('simple_select', { featureIds: [f.id] });
+    } else {
+      draw.changeMode('simple_select', { featureIds: [] });
+    }
+  });
+  updateGradeLabels();
+});
 
     // Handle deletion events from MapboxDraw
     map.on('draw.delete', e => {
@@ -482,14 +488,14 @@ function geojsonToKML(features) {
   return kmlStart + placemarks + kmlEnd;
 }
 
-// Add toast functionality
+// Update toast functionality to center the message
 function showToast(message, duration = 3000) {
   const toast = document.createElement('div');
   toast.innerHTML = message;
   toast.style.position = 'fixed';
-  toast.style.bottom = '20px';
+  toast.style.top = '50%';         // changed from bottom to top 50%
   toast.style.left = '50%';
-  toast.style.transform = 'translateX(-50%)';
+  toast.style.transform = 'translate(-50%, -50%)';  // center both horizontally & vertically
   toast.style.background = 'rgba(0,0,0,0.7)';
   toast.style.color = '#fff';
   toast.style.padding = '10px 20px';
