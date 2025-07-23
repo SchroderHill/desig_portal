@@ -173,6 +173,52 @@
     // Run once on initial load
     map.on('load', addCustomLayers);
 
+    // --- PRIMARY PARCELS WFS CONFIG ---
+const API_KEY = '3fb2e95f968e45fda09dc30805fa13a3';
+const BASE_WFS = `https://data.linz.govt.nz/services;key=${API_KEY}/wfs`;
+
+map.on('load', () => {
+  map.addSource('parcels', {
+    type: 'geojson',
+    data: { type: 'FeatureCollection', features: [] }
+  });
+  
+  map.addLayer({
+    id: 'parcels-line',
+    type: 'line',
+    source: 'parcels',
+    minzoom: 10,
+    paint: {
+      'line-color': '#000000',
+      'line-width': 0.5
+    }
+  });
+});
+
+map.on('moveend', () => {
+  if (map.getZoom() < 8) return;
+  
+  const bounds = map.getBounds();
+  const bbox = [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()].join(',');
+  
+  const url = `${BASE_WFS}`
+    + `?service=WFS`
+    + `&version=2.0.0`
+    + `&request=GetFeature`
+    + `&typeNames=layer-50772`
+    + `&outputFormat=application/json`
+    + `&bbox=${bbox},EPSG:4326`;
+
+  fetch(url)
+    .then(response => response.json())
+    .then(data => {
+      if (map.getSource('parcels')) {
+        map.getSource('parcels').setData(data);
+      }
+    })
+    .catch(err => console.error('WFS error:', err));
+});
+
     // --- EXPORT / IMPORT GEOJSON (unchanged) ---
     document.getElementById('export').addEventListener('click', () => {
       const data = draw.getAll();
