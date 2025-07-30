@@ -35,8 +35,6 @@
     <button id="draw-line">Draw Road</button>
     <button id="draw-polygon">Draw Pad</button>
     <button id="export">Export</button>
-    <button id="import">Import GeoJSON</button>
-    <input type="file" id="file-input" style="display: none;" accept=".geojson,application/json">
     <div id="layers-panel">
       <h3>Layers</h3>
       <div id="layers-list"></div>
@@ -143,11 +141,11 @@
     // Buttons for draw modes
     document.getElementById('draw-line').addEventListener('click', () => {
       draw.changeMode('draw_line_string');
-      showToast("left click to start drawing<br>double click to stop drawing");
+      showToast("left click to start drawing.<br>Double click to stop drawing.");
     });
     document.getElementById('draw-polygon').addEventListener('click', () => {
       draw.changeMode('draw_polygon');
-      showToast("left click to start drawing<br>double click to stop drawing");
+      showToast("left click to start drawing.<br>Double click to stop drawing.");
     });
 
     // --- TERRAIN & CUSTOM SOURCES/LAYERS ---
@@ -187,7 +185,7 @@ map.on('load', () => {
     id: 'parcels-line',
     type: 'line',
     source: 'parcels',
-    minzoom: 10,
+    minzoom: 13,
     paint: {
       'line-color': '#000000',
       'line-width': 0.5
@@ -196,7 +194,7 @@ map.on('load', () => {
 });
 
 map.on('moveend', () => {
-  if (map.getZoom() < 8) return;
+  if (map.getZoom() < 13) return;
   
   const bounds = map.getBounds();
   const bbox = [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()].join(',');
@@ -242,30 +240,6 @@ map.on('moveend', () => {
         console.error('Export failed:', error);
         alert('Export failed. Please try again.');
       }
-    });
-
-    document.getElementById('import').addEventListener('click', () => document.getElementById('file-input').click());
-    document.getElementById('file-input').addEventListener('change', function(e) {
-      const file = e.target.files[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = evt => {
-        const geojson = JSON.parse(evt.target.result);
-        const layerId = 'imported-' + Date.now();
-        map.addSource(layerId, { type: 'geojson', data: geojson });
-        map.addLayer({ id: layerId + '-fill', type: 'fill', source: layerId, paint: { 'fill-color': '#088', 'fill-opacity': 0.4 }, filter: ['==', '$type', 'Polygon'] });
-        map.addLayer({ id: layerId + '-line', type: 'line', source: layerId, paint: { 'line-color': '#088', 'line-width': 2 } });
-        const toggleDiv = document.createElement('div');
-        toggleDiv.innerHTML = `<input type="checkbox" id="${layerId}-toggle" class="layer-toggle" checked><label for="${layerId}-toggle">${file.name}</label>`;
-        document.getElementById('layers-list').appendChild(toggleDiv);
-        document.getElementById(`${layerId}-toggle`).addEventListener('change', ev => {
-          const vis = ev.target.checked ? 'visible' : 'none';
-          map.setLayoutProperty(layerId + '-fill', 'visibility', vis);
-          map.setLayoutProperty(layerId + '-line', 'visibility', vis);
-        });
-      };
-      reader.readAsText(file);
-      this.value = '';
     });
 
     // --- LIVE POPUP GRADIENT DURING DRAW (unchanged) ---
