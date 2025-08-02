@@ -47,15 +47,22 @@
   <script>
     mapboxgl.accessToken = 'pk.eyJ1Ijoic2Nocm9kZXItaGlsbCIsImEiOiJjbHpmdW5ibXUxY3I1MmtvbXU3c2t0aHhoIn0.D_W59ZKzQSJf7WF8Cfhm3w';
 
-    // --- STYLE CONFIGURATION (base vs contour) ---
+    // --- STYLE CONFIGURATION (base vs aerial) ---
     const mapStyles = {
       satellite: 'mapbox://styles/mapbox/satellite-v9',
       contours: 'mapbox://styles/mapbox/outdoors-v12'
     };
 
+    // LINZ Aerial Imagery API
+    const LINZ_API_KEY = 'c01k1d80kejs44kkhx4d23zbwvg';
+
     const transitionZoom = {
-      start: 16, // Start transition at zoom 15
-      end: 17.5    // Complete transition at zoom 17
+      start: 10, // Start LINZ aerial at zoom 10
+      end: 12,   // Complete LINZ aerial transition at zoom 12
+      contoursStart: 14, // Start contours at zoom 14
+      contoursEnd: 23,   // Complete contours transition at zoom 23
+      hillshadeStart: 16, // Start hillshade at zoom 16
+      hillshadeEnd: 18    // Complete hillshade transition at zoom 18
     };
 
     // --- INITIALISE MAP ---
@@ -68,21 +75,23 @@
       fadeDuration: 300 // Smoother fade duration (milliseconds)
     });
 
-    // Add second map as a overlay
-    let contourMap = null;
+    // Add LINZ aerial imagery as overlay
+    let aerialOverlay = null;
 
     map.on('load', () => {
-      // Add contour map as a raster layer
-      map.addSource('contour-overlay', {
+      // Add LINZ aerial imagery as a raster layer
+      map.addSource('linz-aerial-overlay', {
         type: 'raster',
-        tiles: [`https://api.mapbox.com/styles/v1/mapbox/outdoors-v12/tiles/{z}/{x}/{y}?access_token=${mapboxgl.accessToken}`],
+        tiles: [`https://basemaps.linz.govt.nz/v1/tiles/aerial/WebMercatorQuad/{z}/{x}/{y}.webp?api=${LINZ_API_KEY}`],
         tileSize: 256,
+        maxzoom: 21,
+        attribution: '© LINZ'
       });
 
       map.addLayer({
-        id: 'contour-overlay-layer',
+        id: 'linz-aerial-overlay-layer',
         type: 'raster',
-        source: 'contour-overlay',
+        source: 'linz-aerial-overlay',
         paint: {
           'raster-opacity': 0,
           'raster-opacity-transition': {
@@ -90,24 +99,137 @@
           }
         }
       });
+
+      // Add LINZ hillshade layer for close zoom levels
+      map.addSource('linz-hillshade-overlay', {
+        type: 'raster',
+        tiles: [`https://basemaps.linz.govt.nz/v1/tiles/hillshade/WebMercatorQuad/{z}/{x}/{y}.png?api=${LINZ_API_KEY}`],
+        tileSize: 256,
+        maxzoom: 21,
+        attribution: '© LINZ'
+      });
+
+      map.addLayer({
+        id: 'linz-hillshade-overlay-layer',
+        type: 'raster',
+        source: 'linz-hillshade-overlay',
+        paint: {
+          'raster-opacity': 0,
+          'raster-opacity-transition': {
+            duration: 500
+          }
+        }
+      });
+
+      // Add contour/outdoor map overlay for medium zoom levels - VECTOR TILES VERSION
+      map.addSource('mapbox-terrain-vector', {
+        type: 'vector',
+        url: 'mapbox://mapbox.mapbox-terrain-v2'
+      });
+
+      // Add only the contour lines as vector layer
+      map.addLayer({
+        id: 'contour-lines',
+        type: 'line',
+        source: 'mapbox-terrain-vector',
+        'source-layer': 'contour',
+        paint: {
+          'line-color': '#ffff00',  // Bright yellow color for maximum visibility
+          'line-width': [
+            'interpolate',
+            ['linear'],
+            ['zoom'],
+            14, 1.5,
+            20, 4
+          ],
+          'line-opacity': 0
+        }
+      });
+
+      // Add contour labels
+      map.addLayer({
+        id: 'contour-labels',
+        type: 'symbol',
+        source: 'mapbox-terrain-vector',
+        'source-layer': 'contour',
+        filter: ['has', 'ele'],
+        layout: {
+          'text-field': ['concat', ['get', 'ele'], 'm'],
+          'text-font': ['DIN Pro Bold', 'Arial Unicode MS Bold'],
+          'text-size': 14,
+          'symbol-placement': 'line',
+          'text-rotation-alignment': 'map',
+          'text-allow-overlap': false,
+          'text-ignore-placement': false
+        },
+        paint: {
+          'text-color': '#ffff00',  // Bright yellow text for high visibility
+          'text-halo-color': 'rgba(0,0,0,1)',
+          'text-halo-width': 4,
+          'text-opacity': 0
+        }
+      });
     });
 
-    // Handle zoom transitions
+    // Handle zoom transitions - fade in LINZ aerial imagery, contours, and hillshade
     map.on('zoom', () => {
       const currentZoom = map.getZoom();
       
-      // Calculate opacity based on zoom level
+      // Calculate opacity for aerial imagery (zoom 10-16, then fade out for hillshade)
       if (currentZoom >= transitionZoom.start) {
         const progress = Math.min((currentZoom - transitionZoom.start) / (transitionZoom.end - transitionZoom.start), 1);
         
-        // Fade in contours and fade out satellite
-        if (map.getLayer('contour-overlay-layer')) {
-          map.setPaintProperty('contour-overlay-layer', 'raster-opacity', progress * 0.8); // Max 80% opacity
+        // Keep aerial imagery until hillshade starts, then fade out
+        let aerialOpacity = progress;
+        if (currentZoom >= transitionZoom.hillshadeStart) {
+          const fadeProgress = Math.min((currentZoom - transitionZoom.hillshadeStart) / (transitionZoom.hillshadeEnd - transitionZoom.hillshadeStart), 1);
+          aerialOpacity = progress * (1 - fadeProgress); // Fade out as hillshade fades in
+        }
+        
+        // Fade in LINZ aerial imagery
+        if (map.getLayer('linz-aerial-overlay-layer')) {
+          map.setPaintProperty('linz-aerial-overlay-layer', 'raster-opacity', aerialOpacity);
         }
       } else {
         // Reset opacity when zoomed out
-        if (map.getLayer('contour-overlay-layer')) {
-          map.setPaintProperty('contour-overlay-layer', 'raster-opacity', 0);
+        if (map.getLayer('linz-aerial-overlay-layer')) {
+          map.setPaintProperty('linz-aerial-overlay-layer', 'raster-opacity', 0);
+        }
+      }
+
+      // Calculate opacity for contours (zoom 14-23) - VECTOR VERSION
+      if (currentZoom >= transitionZoom.contoursStart) {
+        const contoursProgress = Math.min((currentZoom - transitionZoom.contoursStart) / (transitionZoom.contoursEnd - transitionZoom.contoursStart), 1);
+        
+        // Fade in vector contour lines and labels
+        if (map.getLayer('contour-lines')) {
+          map.setPaintProperty('contour-lines', 'line-opacity', contoursProgress);
+        }
+        if (map.getLayer('contour-labels')) {
+          map.setPaintProperty('contour-labels', 'text-opacity', contoursProgress * 0.8);
+        }
+      } else {
+        // Reset contours opacity when zoomed out
+        if (map.getLayer('contour-lines')) {
+          map.setPaintProperty('contour-lines', 'line-opacity', 0);
+        }
+        if (map.getLayer('contour-labels')) {
+          map.setPaintProperty('contour-labels', 'text-opacity', 0);
+        }
+      }
+
+      // Calculate opacity for hillshade (zoom 16-18) - replaces aerial imagery
+      if (currentZoom >= transitionZoom.hillshadeStart) {
+        const hillshadeProgress = Math.min((currentZoom - transitionZoom.hillshadeStart) / (transitionZoom.hillshadeEnd - transitionZoom.hillshadeStart), 1);
+        
+        // Fade in LINZ hillshade at full strength for detailed terrain visualization
+        if (map.getLayer('linz-hillshade-overlay-layer')) {
+          map.setPaintProperty('linz-hillshade-overlay-layer', 'raster-opacity', hillshadeProgress * 1.0); // Full opacity for hillshade
+        }
+      } else {
+        // Reset hillshade opacity when zoomed out
+        if (map.getLayer('linz-hillshade-overlay-layer')) {
+          map.setPaintProperty('linz-hillshade-overlay-layer', 'raster-opacity', 0);
         }
       }
     });
@@ -141,11 +263,11 @@
     // Buttons for draw modes
     document.getElementById('draw-line').addEventListener('click', () => {
       draw.changeMode('draw_line_string');
-      showToast("Left click to start drawing.<br>Double click to stop drawing.");
+      showToast("left click to start drawing.<br>Double click to stop drawing.");
     });
     document.getElementById('draw-polygon').addEventListener('click', () => {
       draw.changeMode('draw_polygon');
-      showToast("Left click to start drawing.<br>Double click to stop drawing.");
+      showToast("left click to start drawing.<br>Double click to stop drawing.");
     });
 
     // --- TERRAIN & CUSTOM SOURCES/LAYERS ---
