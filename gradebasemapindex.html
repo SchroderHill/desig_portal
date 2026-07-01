@@ -164,7 +164,7 @@
   <script src="https://unpkg.com/@turf/turf@6.5.0/turf.min.js"></script>
 
   <script>
-    mapboxgl.accessToken = 'pk.eyJ1Ijoic2Nocm9kZXItaGlsbCIsImEiOiJjbHpmdW5ibXUxY3I1MmtvbXU3c2t0aHhoIn0.D_W59ZKzQSJf7WF8Cfhm3w';
+    mapboxgl.accessToken = window.DESIGN_PORTAL_MAPBOX_ACCESS_TOKEN || localStorage.getItem('designPortalMapboxToken') || '';
 
     // 1. Initialize the map
     const map = new mapboxgl.Map({

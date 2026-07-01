@@ -1,0 +1,19 @@
+{
+  "name": "design-portal-geopdf-importer",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "pdf-lib": "^1.17.1",
+    "pdfjs-dist": "^6.1.200",
+    "proj4": "^2.20.8"
+  },
+  "devDependencies": {
+    "vite": "^6.3.5",
+    "vitest": "^3.1.3"
+  }
+}

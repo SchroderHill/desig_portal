@@ -25,6 +25,28 @@
     #sidebar { position: absolute; top: 50px; left: 0; width: 150px; bottom: 0; background: #7d7b7b; padding: 10px; z-index: 1; }
     #sidebar button { display: block; width: 100%; margin: 5px 0; padding: 8px; background: #4a4a4a; color: white; border: none; border-radius: 3px; cursor: pointer; }
     #sidebar button:hover { background: #666; }
+    #sidebar button:disabled { cursor: wait; opacity: 0.65; }
+    #geopdf-status { min-height: 0; margin: 4px 0 8px; color: #fff; font: 11px/1.25 Arial, sans-serif; overflow-wrap: anywhere; }
+    #geopdf-status:empty { display: none; }
+    #geopdf-status[data-state="error"] { color: #ffd1d1; }
+    #geopdf-status[data-state="warning"] { color: #fff1a8; }
+    .geopdf-layer { margin: 8px 0; padding: 6px; border-radius: 3px; background: rgba(255, 255, 255, 0.16); font: 11px/1.25 Arial, sans-serif; }
+    .geopdf-layer-heading { display: flex; gap: 5px; align-items: center; min-width: 0; }
+    .geopdf-layer-heading span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .geopdf-opacity { display: grid; grid-template-columns: auto 1fr; gap: 5px; align-items: center; margin-top: 6px; }
+    .geopdf-opacity input { min-width: 0; width: 100%; }
+    .geopdf-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-top: 5px; }
+    #sidebar .geopdf-actions button { display: inline-block; width: auto; margin: 0; padding: 4px; font-size: 10px; }
+    .geopdf-meta { display: block; margin-top: 5px; color: #e8e8e8; }
+    .geopdf-meta-warning { color: #fff1a8; }
+    #earthworks-legend { margin-top: 10px; padding: 7px; border-radius: 3px; background: rgba(255, 255, 255, 0.16); color: #fff; font: 11px/1.3 Arial, sans-serif; }
+    #earthworks-legend strong { display: block; margin-bottom: 4px; }
+    .earthworks-key { display: flex; align-items: center; gap: 5px; margin-top: 3px; }
+    .earthworks-swatch { width: 18px; height: 5px; border-radius: 3px; background: #9ca3af; }
+    .earthworks-swatch--cut { background: #2eae62; }
+    .earthworks-swatch--fill { background: #f28c28; }
+    #road-analysis-status { margin-top: 5px; color: #fff; font: 10px/1.25 Arial, sans-serif; overflow-wrap: anywhere; }
+    #road-analysis-status[data-state="error"] { color: #ffd1d1; }
     .mapbox-gl-draw_ctrl-draw-btn { border: none; cursor: pointer; display: block; width: 30px; height: 30px; background-color: #fff; padding: 2px; font-size: 20px; text-align: center; font-weight: bold; border-radius: 4px; }
     .mapbox-gl-draw_ctrl-draw-btn:hover { background-color: #1d1b1b; }
   </style>
@@ -32,6 +54,9 @@
 <body>
   <div id="header">Design Portal</div>
   <div id="sidebar">
+    <button id="add-geopdf" type="button">Add GeoPDF</button>
+    <input id="geopdf-file" type="file" accept=".pdf,application/pdf" hidden>
+    <div id="geopdf-status" role="status" aria-live="polite"></div>
     <button id="draw-line">Draw Road</button>
     <button id="draw-polygon">Draw Pad</button>
     <button id="export">Export</button>
@@ -39,13 +64,20 @@
       <h3>Layers</h3>
       <div id="layers-list"></div>
     </div>
+    <div id="earthworks-legend" hidden>
+      <strong>Terrain estimate</strong>
+      <span class="earthworks-key"><i class="earthworks-swatch earthworks-swatch--cut"></i>Cut</span>
+      <span class="earthworks-key"><i class="earthworks-swatch earthworks-swatch--fill"></i>Fill</span>
+      <span class="earthworks-key"><i class="earthworks-swatch"></i>Balanced</span>
+    </div>
+    <div id="road-analysis-status" role="status" aria-live="polite" hidden></div>
   </div>
   <div id="map"></div>
   <script src="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js"></script>
   <script src="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-draw/v1.4.2/mapbox-gl-draw.js"></script>
   <script src="https://unpkg.com/@turf/turf@6.5.0/turf.min.js"></script>
   <script>
-    mapboxgl.accessToken = 'pk.eyJ1Ijoic2Nocm9kZXItaGlsbCIsImEiOiJjbHpmdW5ibXUxY3I1MmtvbXU3c2t0aHhoIn0.D_W59ZKzQSJf7WF8Cfhm3w';
+    mapboxgl.accessToken = window.DESIGN_PORTAL_MAPBOX_ACCESS_TOKEN || localStorage.getItem('designPortalMapboxToken') || '';
 
     // --- STYLE CONFIGURATION (base vs aerial) ---
     const mapStyles = {
@@ -245,6 +277,8 @@
       ]
     });
     map.addControl(draw);
+    window.designPortal = { map, draw };
+    window.designPortalGeoPdf = window.designPortal;
 
     // --- GEOCODER CONTROL ---
     const geocoder = new MapboxGeocoder({
@@ -271,17 +305,25 @@
     });
 
     // --- TERRAIN & CUSTOM SOURCES/LAYERS ---
+    const vertexLayerId = 'vertices';
+    const vertexHitboxLayerId = 'vertices-hitbox';
+
     function addCustomLayers() {
       // DEM / terrain / hillshade
       if (!map.getSource('mapbox-dem')) {
         map.addSource('mapbox-dem', { type: 'raster-dem', url: 'mapbox://mapbox.terrain-rgb', tileSize: 512, maxzoom: 14 });
         map.setTerrain({ source: 'mapbox-dem', exaggeration: 1 });
-        map.addLayer({ id: 'hillshade', source: 'mapbox-dem', type: 'hillshade', paint: {} }, 'waterway-label');
+        map.addLayer({ id: 'hillshade', source: 'mapbox-dem', type: 'hillshade', paint: {} }, map.getLayer('waterway-label') ? 'waterway-label' : undefined);
       }
       // Vertices layer
-      if (!map.getSource('vertices')) {
-        map.addSource('vertices', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
-        map.addLayer({ id: 'vertices', type: 'circle', source: 'vertices', paint: { 'circle-radius': 5, 'circle-color': '#ffffff', 'circle-stroke-color': '#D20C0C', 'circle-stroke-width': 2 } });
+      if (!map.getSource(vertexLayerId)) {
+        map.addSource(vertexLayerId, { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+      }
+      if (!map.getLayer(vertexHitboxLayerId)) {
+        map.addLayer({ id: vertexHitboxLayerId, type: 'circle', source: vertexLayerId, paint: { 'circle-radius': 14, 'circle-color': '#ffffff', 'circle-opacity': 0.01 } });
+      }
+      if (!map.getLayer(vertexLayerId)) {
+        map.addLayer({ id: vertexLayerId, type: 'circle', source: vertexLayerId, paint: { 'circle-radius': 6, 'circle-color': '#ffffff', 'circle-stroke-color': '#D20C0C', 'circle-stroke-width': 2 } });
       }
       // Grade‑label layer
       if (!map.getSource('grade-labels')) {
@@ -471,7 +513,24 @@ map.on('moveend', () => {
 
     // Vertex drag handlers
     let draggedVertex = null;
-    map.on('mousedown', 'vertices', e => { if (!e.features.length) return; draggedVertex = { feature: draw.get(e.features[0].properties.id), index: e.features[0].properties.index }; map.getCanvas().style.cursor = 'grabbing'; });
+    let vertexDragPanWasEnabled = false;
+
+    function finishVertexDrag() {
+      if (!draggedVertex) return;
+      draggedVertex = null;
+      if (vertexDragPanWasEnabled) map.dragPan.enable();
+      map.getCanvas().style.cursor = '';
+    }
+
+    map.on('mousedown', vertexHitboxLayerId, e => {
+      if (!e.features.length) return;
+      e.preventDefault();
+      e.originalEvent.stopPropagation();
+      vertexDragPanWasEnabled = map.dragPan.isEnabled();
+      if (vertexDragPanWasEnabled) map.dragPan.disable();
+      draggedVertex = { feature: draw.get(e.features[0].properties.id), index: e.features[0].properties.index };
+      map.getCanvas().style.cursor = 'grabbing';
+    });
     map.on('mousemove', e => {
       if (!draggedVertex) return;
       const feature = draggedVertex.feature;
@@ -484,25 +543,18 @@ map.on('moveend', () => {
       draw.add(feature);
       updateVertices();
     });
-    map.on('mouseup', () => { if (draggedVertex) { map.getCanvas().style.cursor = ''; draggedVertex = null; } });
-    map.on('mouseover', 'vertices', () => {
+    map.on('mouseup', finishVertexDrag);
+    window.addEventListener('mouseup', finishVertexDrag);
+    map.on('mousemove', vertexHitboxLayerId, () => {
+      if (!draggedVertex) map.getCanvas().style.cursor = 'move';
+    });
+    map.on('mouseover', vertexHitboxLayerId, () => {
       map.getCanvas().style.cursor = 'move'; // Shows 4-sided arrow cursor
     });
 
-    map.on('mouseout', 'vertices', () => {
+    map.on('mouseout', vertexHitboxLayerId, () => {
       if (!draggedVertex) {
         map.getCanvas().style.cursor = '';
-      }
-    });
-
-    map.on('mousedown', 'vertices', () => {
-      map.getCanvas().style.cursor = 'grabbing'; // Changes to grabbing while dragging
-    });
-
-    map.on('mouseup', () => {
-      if (draggedVertex) {
-        map.getCanvas().style.cursor = '';
-        draggedVertex = null;
       }
     });
 
@@ -648,5 +700,6 @@ function showToast(message, duration = 3000) {
   setTimeout(() => { toast.remove(); }, duration);
 }
   </script>
+  <script type="module" src="./geopdf-dist/geopdf-importer.js"></script>
 </body>
 </html>
