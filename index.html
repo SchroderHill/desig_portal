@@ -81,31 +81,19 @@
     const hasMapboxAccessToken = Boolean(mapboxAccessToken);
     mapboxgl.accessToken = mapboxAccessToken;
 
-    // LINZ Aerial Imagery API
-    const LINZ_API_KEY = 'c01k1d80kejs44kkhx4d23zbwvg';
+    if (!hasMapboxAccessToken) {
+      document.getElementById('map').innerHTML = '<div style="padding: 24px; font: 16px/1.4 Arial, sans-serif; color: #111; background: #fff; max-width: 520px; margin: 24px;">Map unavailable: configure a Mapbox access token with <code>localStorage.setItem(\'designPortalMapboxToken\', \'your-token\')</code>, then reload.</div>';
+      throw new Error('Design Portal map requires a Mapbox access token.');
+    }
 
     // --- STYLE CONFIGURATION (base vs aerial) ---
     const mapStyles = {
-      satellite: {
-        version: 8,
-        glyphs: 'https://fonts.openmaptiles.org/{fontstack}/{range}.pbf',
-        sources: {
-          'linz-aerial-base': {
-            type: 'raster',
-            tiles: [`https://basemaps.linz.govt.nz/v1/tiles/aerial/WebMercatorQuad/{z}/{x}/{y}.webp?api=${LINZ_API_KEY}`],
-            tileSize: 256,
-            maxzoom: 21,
-            attribution: '© LINZ'
-          }
-        },
-        layers: [{
-          id: 'linz-aerial-base-layer',
-          type: 'raster',
-          source: 'linz-aerial-base'
-        }]
-      },
+      satellite: 'mapbox://styles/mapbox/satellite-v9',
       contours: 'mapbox://styles/mapbox/outdoors-v12'
     };
+
+    // LINZ Aerial Imagery API
+    const LINZ_API_KEY = 'c01k1d80kejs44kkhx4d23zbwvg';
 
     const transitionZoom = {
       start: 10, // Start LINZ aerial at zoom 10
@@ -172,56 +160,54 @@
         }
       });
 
-      if (hasMapboxAccessToken) {
-        // Add contour/outdoor map overlay for medium zoom levels - VECTOR TILES VERSION
-        map.addSource('mapbox-terrain-vector', {
-          type: 'vector',
-          url: 'mapbox://mapbox.mapbox-terrain-v2'
-        });
+      // Add contour/outdoor map overlay for medium zoom levels - VECTOR TILES VERSION
+      map.addSource('mapbox-terrain-vector', {
+        type: 'vector',
+        url: 'mapbox://mapbox.mapbox-terrain-v2'
+      });
 
-        // Add only the contour lines as vector layer
-        map.addLayer({
-          id: 'contour-lines',
-          type: 'line',
-          source: 'mapbox-terrain-vector',
-          'source-layer': 'contour',
-          paint: {
-            'line-color': '#ffff00',  // Bright yellow color for maximum visibility
-            'line-width': [
-              'interpolate',
-              ['linear'],
-              ['zoom'],
-              14, 1.5,
-              20, 4
-            ],
-            'line-opacity': 0
-          }
-        });
+      // Add only the contour lines as vector layer
+      map.addLayer({
+        id: 'contour-lines',
+        type: 'line',
+        source: 'mapbox-terrain-vector',
+        'source-layer': 'contour',
+        paint: {
+          'line-color': '#ffff00',  // Bright yellow color for maximum visibility
+          'line-width': [
+            'interpolate',
+            ['linear'],
+            ['zoom'],
+            14, 1.5,
+            20, 4
+          ],
+          'line-opacity': 0
+        }
+      });
 
-        // Add contour labels
-        map.addLayer({
-          id: 'contour-labels',
-          type: 'symbol',
-          source: 'mapbox-terrain-vector',
-          'source-layer': 'contour',
-          filter: ['has', 'ele'],
-          layout: {
-            'text-field': ['concat', ['get', 'ele'], 'm'],
-            'text-font': ['Open Sans Bold'],
-            'text-size': 14,
-            'symbol-placement': 'line',
-            'text-rotation-alignment': 'map',
-            'text-allow-overlap': false,
-            'text-ignore-placement': false
-          },
-          paint: {
-            'text-color': '#ffff00',  // Bright yellow text for high visibility
-            'text-halo-color': 'rgba(0,0,0,1)',
-            'text-halo-width': 4,
-            'text-opacity': 0
-          }
-        });
-      }
+      // Add contour labels
+      map.addLayer({
+        id: 'contour-labels',
+        type: 'symbol',
+        source: 'mapbox-terrain-vector',
+        'source-layer': 'contour',
+        filter: ['has', 'ele'],
+        layout: {
+          'text-field': ['concat', ['get', 'ele'], 'm'],
+          'text-font': ['DIN Pro Bold', 'Arial Unicode MS Bold'],
+          'text-size': 14,
+          'symbol-placement': 'line',
+          'text-rotation-alignment': 'map',
+          'text-allow-overlap': false,
+          'text-ignore-placement': false
+        },
+        paint: {
+          'text-color': '#ffff00',  // Bright yellow text for high visibility
+          'text-halo-color': 'rgba(0,0,0,1)',
+          'text-halo-width': 4,
+          'text-opacity': 0
+        }
+      });
     });
 
     // Handle zoom transitions - fade in LINZ aerial imagery, contours, and hillshade
@@ -302,20 +288,18 @@
     window.designPortalGeoPdf = window.designPortal;
 
     // --- GEOCODER CONTROL ---
-    if (hasMapboxAccessToken && window.MapboxGeocoder) {
-      const geocoder = new MapboxGeocoder({
-        accessToken: mapboxgl.accessToken,
-        mapboxgl: mapboxgl,
-        placeholder: 'Search for any location',
-        flyTo: {
-          speed: 1.2,
-          curve: 1,
-          easing: t => t
-        }
-      });
+    const geocoder = new MapboxGeocoder({
+      accessToken: mapboxgl.accessToken,
+      mapboxgl: mapboxgl,
+      placeholder: 'Search for any location',
+      flyTo: {
+        speed: 1.2,
+        curve: 1,
+        easing: t => t
+      }
+    });
 
-      map.addControl(geocoder, 'top-left');
-    }
+    map.addControl(geocoder, 'top-left');
 
     // Buttons for draw modes
     document.getElementById('draw-line').addEventListener('click', () => {
@@ -333,7 +317,7 @@
 
     function addCustomLayers() {
       // DEM / terrain / hillshade
-      if (hasMapboxAccessToken && !map.getSource('mapbox-dem')) {
+      if (!map.getSource('mapbox-dem')) {
         map.addSource('mapbox-dem', { type: 'raster-dem', url: 'mapbox://mapbox.terrain-rgb', tileSize: 512, maxzoom: 14 });
         map.setTerrain({ source: 'mapbox-dem', exaggeration: 1 });
         map.addLayer({ id: 'hillshade', source: 'mapbox-dem', type: 'hillshade', paint: {} }, map.getLayer('waterway-label') ? 'waterway-label' : undefined);
@@ -351,7 +335,7 @@
       // Grade‑label layer
       if (!map.getSource('grade-labels')) {
         map.addSource('grade-labels', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
-        map.addLayer({ id: 'grade-labels', type: 'symbol', source: 'grade-labels', layout: { 'text-field': ['get', 'grade'], 'text-font': ['Open Sans Regular'], 'text-size': 18, 'text-allow-overlap': true, 'text-ignore-placement': true, 'text-anchor': 'center' }, paint: { 'text-color': 'rgba(260,0,0,1)' } });
+        map.addLayer({ id: 'grade-labels', type: 'symbol', source: 'grade-labels', layout: { 'text-field': ['get', 'grade'], 'text-size': 18, 'text-allow-overlap': true, 'text-ignore-placement': true, 'text-anchor': 'center' }, paint: { 'text-color': 'rgba(260,0,0,1)' } });
       }
     }
 
