@@ -1,5 +1,6 @@
 import { parseGeoPdf } from "./geopdf.js";
 import { initialiseRoadEarthworks } from "./road-earthworks-controller.js";
+import { initialiseSteepSlope } from "./steep-slope-controller.js";
 
 const portal = window.designPortal ?? window.designPortalGeoPdf;
 const map = portal?.map;
@@ -17,6 +18,16 @@ if (map && draw) {
     accessToken: window.mapboxgl?.accessToken,
     legendElement: document.querySelector("#earthworks-legend"),
     statusElement: document.querySelector("#road-analysis-status"),
+  });
+  initialiseSteepSlope({
+    map,
+    draw,
+    accessToken: window.mapboxgl?.accessToken,
+    buttonElement: document.querySelector("#steep-slope-toggle"),
+    resultElement: document.querySelector("#steep-slope-result"),
+    statusElement: document.querySelector("#steep-slope-status"),
+    thresholdDegrees: 35,
+    corridorMetres: 75,
   });
 }
 
