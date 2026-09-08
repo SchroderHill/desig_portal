@@ -39,7 +39,15 @@ export function initialiseSteepSlope({
   map.on("road.popup.open", event => renderCards.reopen?.([event.roadId]));
   map.on("click", event => {
     if (["simple_select", "direct_select"].includes(draw.getMode?.())) {
-      renderCards.reopen?.(draw.getFeatureIdsAt?.(event.point) ?? []);
+      const ids = draw.getFeatureIdsAt?.(event.point) ?? [];
+      if (map.getLayer("road-earthworks-estimate-line")) {
+        const { x, y } = event.point;
+        const hits = map.queryRenderedFeatures([[x - 8, y - 8], [x + 8, y + 8]], {
+          layers: ["road-earthworks-estimate-line"],
+        });
+        ids.push(...hits.map(feature => feature.properties.roadId));
+      }
+      renderCards.reopen?.(ids);
     }
   });
 
