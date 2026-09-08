@@ -14,6 +14,32 @@ const road = {
 };
 
 describe("steep terrain model", () => {
+  it("maps steep terrain throughout a viewport without any roads", async () => {
+    const bounds = { west: 0, south: 0, east: 0.002, north: 0.002 };
+    const analysis = await analyseSteepSlope({
+      roads: [], bounds, terrainProvider: terrainFromLongitude(x => x),
+    });
+    expect(analysis.features.length).toBeGreaterThan(100);
+    const points = analysis.features.flatMap(f => f.geometry.coordinates[0]);
+    expect(Math.min(...points.map(p => p[0]))).toBeLessThanOrEqual(bounds.west);
+    expect(Math.max(...points.map(p => p[0]))).toBeGreaterThanOrEqual(bounds.east);
+    expect(Math.min(...points.map(p => p[1]))).toBeLessThanOrEqual(bounds.south);
+    expect(Math.max(...points.map(p => p[1]))).toBeGreaterThanOrEqual(bounds.north);
+    expect(analysis.totalRoadLengthMetres).toBe(0);
+  });
+
+  it("limits viewport sampling and rejects invalid bounds", async () => {
+    let count = 0;
+    const terrainProvider = { sampleLine: async points => { count = points.length; return points.map(() => 100); } };
+    const analysis = await analyseSteepSlope({
+      bounds: { west: 0, south: 0, east: 0.1, north: 0.1 }, maximumCells: 500, terrainProvider,
+    });
+    expect(count).toBeLessThanOrEqual(2000);
+    expect(analysis.cellSizeMetres).toBeGreaterThan(20);
+    expect(analysis.features).toEqual([]);
+    await expect(analyseSteepSlope({ bounds: {west: 1, east: 0, south: 0, north: 1}, terrainProvider })).rejects.toThrow("Invalid slope map bounds");
+  });
+
   it("calculates slope in degrees from perpendicular elevation samples", () => {
     expect(slopeDegreesFromElevations({
       west: 0,

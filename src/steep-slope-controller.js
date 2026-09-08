@@ -28,10 +28,13 @@ export function initialiseSteepSlope({
   let revision = 0;
   let debounceTimer = null;
   let drawingOrEditing = false;
+  let roadAnalysis = null;
+  let roadSignature = "";
+  let running = false;
 
   const ensureMapLayers = () => {
     // getStyle() can throw while Mapbox is still fetching its initial style.
-    if (!map.isStyleLoaded()) return false;
+    if (!map.isStyleLoaded() && !map.getSource(SOURCE_ID)) return false;
     if (!map.getSource(SOURCE_ID)) {
       map.addSource(SOURCE_ID, { type: "geojson", data: EMPTY_COLLECTION });
     }
@@ -65,43 +68,54 @@ export function initialiseSteepSlope({
   };
 
   const render = () => {
+    if (resultElement) {
+      resultElement.hidden = !(active && analysis);
+      resultElement.textContent = active && analysis ? resultSummary(analysis, drawingOrEditing ? null : roadAnalysis) : "";
+    }
     if (!ensureMapLayers()) return;
     const source = map.getSource(SOURCE_ID);
     if (source) {
-      source.setData(active && !drawingOrEditing && analysis
+      source.setData(active && analysis
         ? { type: "FeatureCollection", features: analysis.features }
         : EMPTY_COLLECTION);
-    }
-    if (resultElement) {
-      resultElement.hidden = !(active && !drawingOrEditing && analysis);
-      resultElement.textContent = active && analysis ? resultSummary(analysis) : "";
     }
   };
 
   const runAnalysis = async (requestedRevision) => {
-    if (!active) return;
-    const roads = draw.getAll().features.filter((feature) => feature.geometry?.type === "LineString");
-    if (!roads.length) {
-      analysis = null;
-      render();
-      showStatus(statusElement, "Draw a road before calculating slope >35°.", true);
-      return;
-    }
-
-    buttonElement.disabled = true;
-    showStatus(statusElement, `Calculating terrain over ${thresholdDegrees}°…`);
+    if (!active || requestedRevision !== revision) return;
+    if (running) { scheduleAnalysis(250); return; }
+    if (!map.isStyleLoaded()) { scheduleAnalysis(250); return; }
+    running = true;
+    showStatus(statusElement, `Calculating visible terrain over ${thresholdDegrees}°…`);
     try {
+      const view = map.getBounds();
+      const bounds = { west: view.getWest(), south: view.getSouth(), east: view.getEast(), north: view.getNorth() };
+      const width = (bounds.east - bounds.west) * 111320 * Math.cos((bounds.south + bounds.north) * Math.PI / 360);
+      const height = (bounds.north - bounds.south) * 110574;
+      if (width > 20000 || height > 20000) throw new Error("Zoom in to a forest or road area (view under 20 km across).");
       const result = await analyseSteepSlope({
-        roads,
+        roads: [],
+        bounds,
         terrainProvider,
         thresholdDegrees,
         corridorMetres,
         cellSizeMetres: 20,
-        maximumCells: 2500,
+        maximumCells: 10000,
       });
       if (requestedRevision !== revision || !active) return;
       analysis = result;
       render();
+      const roads = drawingOrEditing ? [] : draw.getAll().features.filter((feature) => feature.geometry?.type === "LineString");
+      const signature = JSON.stringify(roads.map(({ id, geometry }) => ({ id, geometry })));
+      if (signature !== roadSignature) {
+        const summary = roads.length ? await analyseSteepSlope({
+          roads, terrainProvider, thresholdDegrees, corridorMetres, cellSizeMetres: 20, maximumCells: 2500,
+        }) : null;
+        if (requestedRevision !== revision || !active) return;
+        roadAnalysis = summary;
+        roadSignature = signature;
+        render();
+      }
       hideStatus(statusElement);
     } catch (error) {
       if (requestedRevision !== revision || !active) return;
@@ -109,7 +123,7 @@ export function initialiseSteepSlope({
       render();
       showStatus(statusElement, `Slope analysis unavailable: ${error.message}`, true);
     } finally {
-      if (requestedRevision === revision) buttonElement.disabled = false;
+      running = false;
     }
   };
 
@@ -145,27 +159,38 @@ export function initialiseSteepSlope({
   map.on("style.load", () => {
     ensureMapLayers();
     render();
+    scheduleAnalysis(0);
   });
-  map.on("draw.create", () => scheduleAnalysis(0));
-  map.on("draw.update", () => scheduleAnalysis());
-  map.on("draw.delete", () => scheduleAnalysis(0));
+  const roadsChanged = () => {
+    roadAnalysis = null;
+    roadSignature = "";
+    render();
+    scheduleAnalysis(0);
+  };
+  map.on("draw.create", roadsChanged);
+  map.on("draw.update", roadsChanged);
+  map.on("draw.delete", roadsChanged);
   map.on("draw.modechange", ({ mode }) => {
     drawingOrEditing = mode === "draw_line_string" || mode === "direct_select";
     if (drawingOrEditing) render();
     else scheduleAnalysis(0);
   });
-  map.on("mouseup", () => scheduleAnalysis());
+  map.on("movestart", () => {
+    revision += 1;
+    clearTimeout(debounceTimer);
+  });
+  map.on("moveend", () => scheduleAnalysis());
 }
 
-function resultSummary(analysis) {
-  const percentage = analysis.totalRoadLengthMetres > 0
-    ? (analysis.steepRoadLengthMetres / analysis.totalRoadLengthMetres) * 100
-    : 0;
+function resultSummary(analysis, roadAnalysis) {
   const gridSize = Math.round(analysis.cellSizeMetres);
-  return `Slope >${analysis.thresholdDegrees}°: ${formatLength(analysis.steepRoadLengthMetres)} of `
-    + `${formatLength(analysis.totalRoadLengthMetres)} road (${percentage.toFixed(1)}%). `
-    + `Red area: ${formatArea(analysis.steepAreaSquareMetres)} within ${analysis.corridorMetres} m of roads. `
-    + `DEM grid: ~${gridSize} m.`;
+  const overview = `Slope >${analysis.thresholdDegrees}°: ${formatArea(analysis.steepAreaSquareMetres)} in the map view. `
+    + `Grid: ~${gridSize} m${gridSize > 25 ? " (zoom in for more detail)" : ""}. `;
+  if (!roadAnalysis) return overview + "Draw a road to measure its steep sections.";
+  const percentage = roadAnalysis.steepRoadLengthMetres / roadAnalysis.totalRoadLengthMetres * 100;
+  return overview + `Roads: ${formatLength(roadAnalysis.steepRoadLengthMetres)} of `
+    + `${formatLength(roadAnalysis.totalRoadLengthMetres)} (${percentage.toFixed(1)}%) above ${analysis.thresholdDegrees}°. `
+    + `Road analysis grid: ~${Math.round(roadAnalysis.cellSizeMetres)} m.`;
 }
 
 function formatLength(metres) {

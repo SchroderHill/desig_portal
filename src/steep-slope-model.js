@@ -33,19 +33,25 @@ export async function analyseSteepSlope({
   cellSizeMetres = 20,
   corridorMetres = 75,
   maximumCells = 2500,
+  bounds,
 }) {
   const validRoads = (roads ?? [])
     .filter((road) => road?.geometry?.type === "LineString")
     .filter((road) => Array.isArray(road.geometry.coordinates) && road.geometry.coordinates.length >= 2);
 
-  if (!validRoads.length) return emptyAnalysis(thresholdDegrees, cellSizeMetres, corridorMetres);
+  if (!validRoads.length && !bounds) return emptyAnalysis(thresholdDegrees, cellSizeMetres, corridorMetres);
+  if (bounds && (![bounds.west, bounds.south, bounds.east, bounds.north].every(Number.isFinite)
+    || bounds.west >= bounds.east || bounds.south >= bounds.north
+    || bounds.south < -85 || bounds.north > 85)) {
+    throw new Error("Invalid slope map bounds.");
+  }
   if (!terrainProvider?.sampleLine) throw new Error("A terrain provider is required for slope analysis.");
 
   const threshold = finitePositive(thresholdDegrees, 35);
   const corridor = finitePositive(corridorMetres, 75);
   const requestedCellSize = Math.max(5, finitePositive(cellSizeMetres, 20));
   const cellLimit = Math.max(100, Math.floor(finitePositive(maximumCells, 2500)));
-  const origin = roadOrigin(validRoads);
+  const origin = bounds ? [(bounds.west + bounds.east) / 2, (bounds.south + bounds.north) / 2] : roadOrigin(validRoads);
   const projection = createLocalProjection(origin);
   const localRoads = validRoads.map((road) => ({
     id: String(road.id ?? "road"),
@@ -59,12 +65,18 @@ export async function analyseSteepSlope({
 
   const approximateCorridorArea = (2 * corridor * totalRoadLengthMetres)
     + (Math.PI * corridor ** 2 * validRoads.length);
-  let effectiveCellSize = Math.max(requestedCellSize, Math.sqrt(approximateCorridorArea / cellLimit));
-  let cells = buildCorridorCells(localRoads, effectiveCellSize, corridor);
+  const southwest = bounds && projection.toLocal([bounds.west, bounds.south]);
+  const northeast = bounds && projection.toLocal([bounds.east, bounds.north]);
+  const area = bounds ? (northeast[0] - southwest[0]) * (northeast[1] - southwest[1]) : approximateCorridorArea;
+  const buildCells = (size) => bounds
+    ? buildExtentCells(southwest, northeast, size)
+    : buildCorridorCells(localRoads, size, corridor);
+  let effectiveCellSize = Math.max(requestedCellSize, Math.sqrt(area / cellLimit));
+  let cells = buildCells(effectiveCellSize);
 
   for (let attempt = 0; cells.length > cellLimit && attempt < 6; attempt += 1) {
     effectiveCellSize *= Math.sqrt(cells.length / cellLimit) * 1.03;
-    cells = buildCorridorCells(localRoads, effectiveCellSize, corridor);
+    cells = buildCells(effectiveCellSize);
   }
 
   const sampleCoordinates = cells.flatMap((cell) => [
@@ -147,6 +159,16 @@ export async function analyseSteepSlope({
     steepAreaSquareMetres: features.length * effectiveCellSize ** 2,
     roadSummaries,
   };
+}
+
+function buildExtentCells(southwest, northeast, size) {
+  const cells = [];
+  for (let column = Math.floor(southwest[0] / size); column < Math.ceil(northeast[0] / size); column += 1) {
+    for (let row = Math.floor(southwest[1] / size); row < Math.ceil(northeast[1] / size); row += 1) {
+      cells.push({ key: `${column}:${row}`, x: (column + 0.5) * size, y: (row + 0.5) * size });
+    }
+  }
+  return cells;
 }
 
 function buildCorridorCells(roads, cellSize, corridor) {
