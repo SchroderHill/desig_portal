@@ -342,31 +342,6 @@ map.on('moveend', () => {
     .catch(err => console.error('WFS error:', err));
 });
 
-    // --- EXPORT / IMPORT GEOJSON (unchanged) ---
-    document.getElementById('export').addEventListener('click', () => {
-      const data = draw.getAll();
-      if (data.features.length === 0) {
-        alert('No features to export. Draw something first.');
-        return;
-      }
-
-      try {
-        const kmlContent = geojsonToKML(data.features);
-        const blob = new Blob([kmlContent], { type: 'application/vnd.google-earth.kml+xml' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'design_export.kml';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-      } catch (error) {
-        console.error('Export failed:', error);
-        alert('Export failed. Please try again.');
-      }
-    });
-
     // --- LIVE POPUP GRADIENT DURING DRAW (unchanged) ---
     let gradePopup = null;
     map.on('draw.render', () => {
@@ -387,10 +362,17 @@ map.on('moveend', () => {
       const sign = gradePercent >= 0 ? '+' : '–';
       const gradeText = `${sign}${Math.abs(gradePercent).toFixed(1)}%`;
       if (gradePopup) gradePopup.remove();
-      gradePopup = new mapboxgl.Popup({ closeButton: false, closeOnClick: false, className: 'grade-label', anchor: 'bottom' })
+      const popup = new mapboxgl.Popup({ closeButton: false, closeOnClick: false, className: 'grade-label', anchor: 'bottom' })
         .setLngLat([lng2, lat2]).setHTML(gradeText).addTo(map);
+      gradePopup = popup;
       setTimeout(() => {
-        if (gradePopup) { gradePopup.getElement().style.opacity = '0'; setTimeout(() => { if (gradePopup) gradePopup.remove(); }, 500); }
+        const popupElement = popup.getElement();
+        if (!popupElement) return;
+        popupElement.style.opacity = '0';
+        setTimeout(() => {
+          popup.remove();
+          if (gradePopup === popup) gradePopup = null;
+        }, 500);
       }, 2500);
     });
 
@@ -407,9 +389,18 @@ map.on('moveend', () => {
       const areaText = `${Math.round(turf.area(poly))}m²`;
       const centroid = turf.centroid(poly);
       if (areaPopup) areaPopup.remove();
-      areaPopup = new mapboxgl.Popup({ closeButton: false, closeOnClick: false, className: 'area-label', anchor: 'center' })
+      const popup = new mapboxgl.Popup({ closeButton: false, closeOnClick: false, className: 'area-label', anchor: 'center' })
         .setLngLat(centroid.geometry.coordinates).setHTML(areaText).addTo(map);
-      setTimeout(() => { if (areaPopup) { areaPopup.getElement().style.opacity = '0'; setTimeout(() => { if (areaPopup) areaPopup.remove(); }, 500); } }, 2500);
+      areaPopup = popup;
+      setTimeout(() => {
+        const popupElement = popup.getElement();
+        if (!popupElement) return;
+        popupElement.style.opacity = '0';
+        setTimeout(() => {
+          popup.remove();
+          if (areaPopup === popup) areaPopup = null;
+        }, 500);
+      }, 2500);
     });
 
     map.on('draw.create', e => {
@@ -593,55 +584,6 @@ map.on('draw.create', e => {
         }
       });
     });
-
-    // Add this KML conversion utility function
-function geojsonToKML(features) {
-  const kmlStart = `<?xml version="1.0" encoding="UTF-8"?>
-<kml xmlns="http://www.opengis.net/kml/2.2">
-  <Document>
-    <name>Design Portal Export</name>
-    <Style id="lineStyle">
-      <LineStyle>
-        <color>ffD20C0C</color>
-        <width>3</width>
-      </LineStyle>
-    </Style>
-    <Style id="polyStyle">
-      <LineStyle>
-        <color>ffD20C0C</color>
-        <width>2</width>
-      </LineStyle>
-      <PolyStyle>
-        <color>40D20C0C</color>
-      </PolyStyle>
-    </Style>`;
-
-  const kmlEnd = `
-  </Document>
-</kml>`;
-
-  const placemarks = features.map((feature, index) => {
-    const isLine = feature.geometry.type === 'LineString';
-    const coords = isLine ? 
-      feature.geometry.coordinates : 
-      feature.geometry.coordinates[0];
-
-    return `
-    <Placemark>
-      <name>${isLine ? 'Line' : 'Polygon'} ${index + 1}</name>
-      <styleUrl>${isLine ? '#lineStyle' : '#polyStyle'}</styleUrl>
-      <${isLine ? 'LineString' : 'Polygon'}>
-        ${!isLine ? '<outerBoundaryIs><LinearRing>' : ''}
-        <coordinates>
-          ${coords.map(c => `${c[0]},${c[1]},0`).join(' ')}
-        </coordinates>
-        ${!isLine ? '</LinearRing></outerBoundaryIs>' : ''}
-      </${isLine ? 'LineString' : 'Polygon'}>
-    </Placemark>`;
-  }).join('\n');
-
-  return kmlStart + placemarks + kmlEnd;
-}
 
 // Update toast functionality to center the message
 function showToast(message, duration = 3000) {

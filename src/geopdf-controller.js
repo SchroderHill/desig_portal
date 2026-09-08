@@ -1,6 +1,7 @@
 import { parseGeoPdf } from "./geopdf.js";
 import { initialiseRoadEarthworks } from "./road-earthworks-controller.js";
 import { initialiseSteepSlope } from "./steep-slope-controller.js";
+import { downloadDesignKml } from "./kml-export.js";
 
 const portal = window.designPortal ?? window.designPortalGeoPdf;
 const map = portal?.map;
@@ -9,9 +10,11 @@ const addButton = document.querySelector("#add-geopdf");
 const fileInput = document.querySelector("#geopdf-file");
 const statusElement = document.querySelector("#geopdf-status");
 const layersList = document.querySelector("#layers-list");
+const exportButton = document.querySelector("#export");
 const overlays = new Map();
 
 if (map && draw) {
+  initialiseKmlExport();
   initialiseRoadEarthworks({
     map,
     draw,
@@ -28,6 +31,24 @@ if (map && draw) {
     statusElement: document.querySelector("#steep-slope-status"),
     thresholdDegrees: 35,
     corridorMetres: 75,
+  });
+}
+
+function initialiseKmlExport() {
+  if (!exportButton) return;
+  exportButton.addEventListener("click", () => {
+    const features = draw.getAll().features;
+    if (!features.length) {
+      window.alert("No features to export. Draw something first.");
+      return;
+    }
+
+    try {
+      downloadDesignKml(features);
+    } catch (error) {
+      console.error("Export failed:", error);
+      window.alert("Export failed. Please try again.");
+    }
   });
 }
 
