@@ -28,6 +28,7 @@ if (map && draw) {
     accessToken: window.mapboxgl?.accessToken,
     buttonElement: document.querySelector("#steep-slope-toggle"),
     resultElement: document.querySelector("#steep-slope-result"),
+    PopupClass: window.mapboxgl?.Popup,
     statusElement: document.querySelector("#steep-slope-status"),
     thresholdDegrees: 35,
     corridorMetres: 75,
