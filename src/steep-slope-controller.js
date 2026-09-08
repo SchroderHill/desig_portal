@@ -1,4 +1,4 @@
-import { createLidarSlopeLoader } from "./lidar-slope.js";
+import { createOnDemandSlopeLoader } from "./on-demand-slope.js";
 import { createRoadSlopePopups } from "./road-slope-cards.js";
 
 const SOURCE_ID = "steep-slope-35";
@@ -16,7 +16,7 @@ export function initialiseSteepSlope({
   PopupClass,
   thresholdDegrees = 35,
   corridorMetres = 75,
-  loadSlope = createLidarSlopeLoader(),
+  loadSlope = createOnDemandSlopeLoader(),
   coverageButton,
 }) {
   if (!map || !draw || !buttonElement) {
@@ -37,9 +37,9 @@ export function initialiseSteepSlope({
   let displayedSource, displayedFeatures;
   coverageButton?.addEventListener('click', async () => {
     try {
-      const grid = await loadSlope();
+      const grid = await loadSlope({coverageOnly: true});
       const [west, south, east, north] = grid.metadata.bounds;
-      map.fitBounds([[west, south], [east, north]], {padding: 60, pitch: 0, bearing: 0});
+      map.flyTo({center: [(west+east)/2, (south+north)/2], zoom: 16.5, pitch: 0, bearing: 0});
     } catch (error) { showStatus(statusElement, error.message, true); }
   });
   const renderCards = createRoadSlopePopups({ PopupClass, map });
@@ -121,14 +121,15 @@ export function initialiseSteepSlope({
     if (!map.isStyleLoaded()) { scheduleAnalysis(250); return; }
     running = true;
     roadError = false;
-    showStatus(statusElement, `Calculating visible terrain over ${thresholdDegrees}°…`);
+    showStatus(statusElement, `Preparing 1 m LiDAR slope tiles… First load may take longer; repeat views use the local cache.`);
     try {
       const view = map.getBounds();
       const bounds = { west: view.getWest(), south: view.getSouth(), east: view.getEast(), north: view.getNorth() };
       const width = (bounds.east - bounds.west) * 111320 * Math.cos((bounds.south + bounds.north) * Math.PI / 360);
       const height = (bounds.north - bounds.south) * 110574;
       if (width > 20000 || height > 20000) throw new Error("Zoom in to a forest or road area (view under 20 km across).");
-      const grid = await loadSlope();
+      const requestedRoads = draw.getAll().features.filter(feature => feature.geometry?.type === 'LineString' && feature.geometry.coordinates.length >= 2);
+      const grid = await loadSlope({bounds, roads: requestedRoads});
       const result = grid.analyse({ bounds });
       if (requestedRevision !== revision || !active) return;
       analysis = result;
@@ -215,10 +216,11 @@ export function initialiseSteepSlope({
 
 function resultSummary(analysis, roadAnalysis) {
   if (analysis.sourceName) {
-    const overview = (analysis.outsideCoverage ? 'No LiDAR coverage in this view. Use View Terraces LiDAR. ' : '')
+    const timing = analysis.timing ? `${analysis.timing.tileCount} tiles; ${analysis.timing.cacheHits} cached; preparation ${analysis.timing.seconds.toFixed(1)} s. ` : '';
+    const overview = (analysis.outsideCoverage ? 'Outside trial coverage. Use View LiDAR test area. ' : '')
       + `${analysis.sourceName} · 1 m reference grid · >35°. Outside mapped coverage is unknown, not flat. `;
-    if (!roadAnalysis?.totalRoadLengthMetres) return overview + 'Draw a road within Terraces to measure its steep sections.';
-    return overview + `Roads: ${formatLength(roadAnalysis.steepRoadLengthMetres)} above 35°. `
+    if (!roadAnalysis?.totalRoadLengthMetres) return overview + timing + 'Draw a road within available coverage to measure its steep sections.';
+    return overview + timing + `Roads: ${formatLength(roadAnalysis.steepRoadLengthMetres)} above 35°. `
       + (roadAnalysis.unknownLengthMetres > 0.01 ? `${formatLength(roadAnalysis.unknownLengthMetres)} has no LiDAR coverage.` : 'All road sections have coverage.');
   }
   const gridSize = Math.round(analysis.cellSizeMetres);
