@@ -28,11 +28,11 @@ export function createOnDemandSlopeLoader({fetchImpl = globalThis.fetch, pollMs 
     if (!response.ok) throw Error(data.error || `Slope server HTTP ${response.status}`);
     return data;
   };
-  return async ({bounds, roads = [], coverageOnly = false} = {}) => {
+  return async ({bounds, roads = [], areas, coverageOnly = false} = {}) => {
     if (coverageOnly) return {metadata: await json('/api/slope/coverage')};
     const started = performance.now();
     const {job} = await json('/api/slope/prepare', {
-      method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({bounds, roads}),
+      method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({bounds, roads, areas}),
     });
     let result;
     while (!result) {

@@ -24,6 +24,7 @@ it("shows slope before drawing, retains it during drawing, measures roads and cl
     on: (event, handler) => handlers.set(event, handler), once: vi.fn(),
   };
   initialiseSteepSlope({map, draw: {getAll: () => ({features: roads})}, accessToken: "test",
+    getAnalysisAreas: () => [{west:0,south:0,east:.002,north:.002}],
     loadSlope: async () => ({analyse: ({roads = []}) => ({features: [{type: 'Feature'}], sourceName: 'Test LiDAR', totalRoadLengthMetres: roads.length * 100, steepRoadLengthMetres: roads.length * 100, unknownLengthMetres: 0})}),
     resultElement, buttonElement: {addEventListener: (_, handler) => {click = handler;}, setAttribute: vi.fn()},
   });

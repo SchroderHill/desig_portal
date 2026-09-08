@@ -52,7 +52,9 @@ def create_server(port=4174, service=None):
                 if not isinstance(request, dict):
                     raise ValueError('Request must be an object')
                 from slope_service import request_tiles
-                request_tiles(request.get('bounds'), request.get('roads', []))
+                if not request.get('areas'):
+                    raise ValueError('Load a GeoPDF or select an analysis area first')
+                request_tiles(request.get('bounds'), request.get('roads', []), request['areas'])
                 with lock:
                     if sum(not job.done() for job in jobs.values()) >= 2:
                         return self.send_json(dict(error='Slope service busy; retry shortly'), 429)
@@ -60,7 +62,7 @@ def create_server(port=4174, service=None):
                         for key in list(jobs):
                             if jobs[key].done(): del jobs[key]
                     key = uuid.uuid4().hex
-                    jobs[key] = executor.submit(service.prepare, request['bounds'], request.get('roads', []))
+                    jobs[key] = executor.submit(service.prepare, request['bounds'], request.get('roads', []), request['areas'])
                 self.send_json(dict(job=key), 202)
             except (ValueError, TypeError, KeyError) as error:
                 self.send_json(dict(error=str(error)), 400)

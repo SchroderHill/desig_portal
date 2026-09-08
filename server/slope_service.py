@@ -16,7 +16,9 @@ os.environ['PROJ_DATA'] = pyproj.datadir.get_data_dir()
 os.environ['PROJ_LIB'] = pyproj.datadir.get_data_dir()
 import numpy as np
 import rasterio
-from rasterio.features import shapes
+from rasterio.features import shapes, rasterize
+from shapely.geometry import box, LineString, mapping
+from shapely.ops import transform, unary_union
 from rasterio.transform import from_origin
 from rasterio.windows import from_bounds
 import requests
@@ -78,14 +80,38 @@ def validate_bounds(bounds):
     return west, south, east, north
 
 
-def request_tiles(bounds, roads):
+def analysis_geometry(areas):
+    if not isinstance(areas, list) or not 1 <= len(areas) <= 20:
+        raise ValueError('Load a GeoPDF or select an analysis area first')
+    return unary_union([transform(WGS_TO_NZ.transform, box(*validate_bounds(area))) for area in areas])
+
+
+def request_tiles(bounds, roads, areas=None):
+    # The viewport never defines permission to expand an explicitly selected area.
     west, south, east, north = validate_bounds(bounds)
-    left, bottom, right, top = WGS_TO_NZ.transform_bounds(west, south, east, north)
-    c0, c1 = math.floor(left/TILE_SIZE), math.floor(right/TILE_SIZE)
-    r0, r1 = math.floor((GRID_TOP-top)/TILE_SIZE), math.floor((GRID_TOP-bottom)/TILE_SIZE)
-    if (c1-c0+1)*(r1-r0+1) > MAX_TILES:
-        raise ValueError('Zoom in: the trial prepares at most 24 local 512 m tiles per view, without reducing the 1 m resolution')
-    keys = {(c, r) for c in range(c0, c1+1) for r in range(r0, r1+1)}
+    scope = analysis_geometry(areas if areas is not None else [bounds])
+    view = transform(WGS_TO_NZ.transform, box(west, south, east, north))
+    keys = set()
+
+    def add_geometry(geometry):
+        if geometry.is_empty: return
+        if hasattr(geometry, 'geoms'):
+            for part in geometry.geoms: add_geometry(part)
+            return
+        left, bottom, right, top = geometry.bounds
+        c0, c1 = math.floor(left/TILE_SIZE), math.floor(right/TILE_SIZE)
+        r0, r1 = math.floor((GRID_TOP-top)/TILE_SIZE), math.floor((GRID_TOP-bottom)/TILE_SIZE)
+        if (c1-c0+1)*(r1-r0+1) > 10000:
+            raise ValueError('Zoom in: analysis request is too large')
+        for c in range(c0, c1+1):
+            for r in range(r0, r1+1):
+                x, y = c*TILE_SIZE, GRID_TOP-r*TILE_SIZE
+                if geometry.intersects(box(x, y-TILE_SIZE, x+TILE_SIZE, y)):
+                    keys.add((c, r))
+                    if len(keys) > MAX_TILES:
+                        raise ValueError('Zoom in or use fewer roads: maximum 24 native 1 m tiles per request')
+
+    add_geometry(view.intersection(scope))
     if not isinstance(roads, list) or len(roads) > 100:
         raise ValueError('Too many roads in this trial')
     total_length = 0
@@ -107,13 +133,8 @@ def request_tiles(bounds, roads):
             total_length += length
             if total_length > 100000:
                 raise ValueError('Trial road length limit is 100 km')
-            # Include both sides of cell corners; do not fetch the huge rectangle between distant roads.
-            for f in np.linspace(0, 1, max(2, math.ceil(length/128)+1)):
-                x, y = a[0]+f*(b[0]-a[0]), a[1]+f*(b[1]-a[1])
-                c, r = math.floor(x/TILE_SIZE), math.floor((GRID_TOP-y)/TILE_SIZE)
-                keys.update((c+dc, r+dr) for dc in (-1, 0, 1) for dr in (-1, 0, 1))
-                if len(keys) > MAX_TILES:
-                    raise ValueError('Roads and map span too many tiles for this trial; zoom in or use fewer roads')
+            if length:
+                add_geometry(LineString([a, b]).intersection(scope))
     return sorted(keys)
 
 
@@ -171,8 +192,31 @@ class SlopeService:
         temporary.replace(path)
         return dict(column=column, row=row, url=f'/api/slope/tiles/{path.name}', cached=False, bytes=len(content), seconds=round(time.perf_counter()-start, 3))
 
-    def prepare(self, bounds, roads):
-        keys = request_tiles(bounds, roads)
+    def scoped_tile(self, entry, scope, scope_id):
+        c, r = entry['column'], entry['row']
+        fingerprint = hashlib.sha256((self.source['fingerprint']+scope_id).encode()).hexdigest()[:20]
+        path = self.cache/f'{fingerprint}-{c}-{r}.json.gz'
+        if not path.exists():
+            tile = json.loads(gzip.decompress(self.tile_path(c, r).read_bytes()))
+            m = tile['metadata']
+            raw = np.frombuffer(base64.b64decode(tile['classes']), dtype='uint8')
+            classes = ((raw[:, None] >> np.array([0, 2, 4, 6])) & 3).astype('uint8').ravel().reshape(TILE_SIZE, TILE_SIZE)
+            mask = rasterize([(mapping(scope), 1)], out_shape=classes.shape,
+                transform=from_origin(m['left'], m['top'], 1, 1), dtype='uint8')
+            classes[mask == 0] = 0
+            tile['classes'] = base64.b64encode(pack(classes)).decode()
+            tile['polygons'] = polygons_for(classes, m['left'], m['top'])
+            m['validCells'], m['steepCells'] = int((classes != 0).sum()), int((classes == 2).sum())
+            temporary = path.with_suffix('.tmp')
+            temporary.write_bytes(gzip.compress(json.dumps(tile, separators=(',', ':')).encode(), mtime=0))
+            temporary.replace(path)
+        return dict(entry, url=f'/api/slope/tiles/{path.name}', bytes=path.stat().st_size)
+
+    def prepare(self, bounds, roads, areas=None):
+        areas = areas if areas is not None else [bounds]
+        scope = analysis_geometry(areas)
+        scope_id = json.dumps(areas, sort_keys=True, separators=(',', ':'))
+        keys = request_tiles(bounds, roads, areas)
         start = time.perf_counter()
         with self.lock:
             self.initialise()
@@ -183,7 +227,7 @@ class SlopeService:
                 b = NZ_TO_WGS.transform_bounds(left, top-TILE_SIZE, left+TILE_SIZE, top)
                 if b[0] > sb[2] or b[2] < sb[0] or b[1] > sb[3] or b[3] < sb[1]:
                     continue
-                tiles.append(self.tile(c, r))
+                tiles.append(self.scoped_tile(self.tile(c, r), scope, scope_id))
         return dict(tiles=tiles, source=self.source, tileSize=TILE_SIZE, gridTop=GRID_TOP,
             seconds=round(time.perf_counter()-start, 3), cacheHits=sum(t['cached'] for t in tiles),
             downloadBytes=sum(t['bytes'] for t in tiles), requestedTiles=len(keys))

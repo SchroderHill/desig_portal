@@ -28,6 +28,9 @@ if (map && draw) {
     accessToken: window.mapboxgl?.accessToken,
     buttonElement: document.querySelector("#steep-slope-toggle"),
     coverageButton: document.querySelector('#lidar-coverage'),
+    areaButton: document.querySelector('#slope-area'),
+    areaElement: document.querySelector('#slope-area-status'),
+    getAnalysisAreas: () => [...overlays.values()].map(overlay => overlay.boundsLngLat),
     resultElement: document.querySelector("#steep-slope-result"),
     PopupClass: window.mapboxgl?.Popup,
     statusElement: document.querySelector("#steep-slope-status"),
@@ -87,6 +90,7 @@ async function handleFileSelection(event) {
     await waitForMapStyle();
     addOverlayToMap(overlay);
     addOverlayControls(overlay);
+    map.fire('slope.area.change');
     zoomToOverlay(overlay);
 
     const pageNote = overlay.pageCount > 1 ? " Showing page 1." : "";
@@ -238,6 +242,7 @@ function removeOverlay(overlay) {
   if (map.getLayer(layer)) map.removeLayer(layer);
   if (map.getSource(source)) map.removeSource(source);
   overlays.delete(overlay.id);
+  map.fire('slope.area.change');
   document.querySelector(`[data-geopdf-id="${overlay.id}"]`)?.remove();
   setStatus(`Removed ${overlay.name}.`, "success");
 }

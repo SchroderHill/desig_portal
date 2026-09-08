@@ -16,7 +16,8 @@ python server/desktop.py --port 4174
 ```
 
 Open http://127.0.0.1:4174/?revision=on-demand#16.5/-41.39999/173.83228/0/0
-and turn on **Slope >35°**. Do not open `index.html` using `file://` or the old
+and load a GeoPDF, or click **Use this view as slope area**, then turn on **Slope >35°**.
+Do not open `index.html` using `file://` or the old
 static preview server: they cannot perform on-demand analysis. Keep the Python
 process running. The server binds only to this computer, not phones or the LAN.
 
@@ -28,7 +29,7 @@ process running. The server binds only to this computer, not phones or the LAN.
 - Missing elevation in any 3x3 neighbour remains unknown, never flat.
 - Each 512 m tile contains a two-bit classification grid and unsimplified polygons
   from those same cells. Road metres use the grid, not screen pixels or simplified geometry.
-- The local service prepares viewport tiles and tiles surrounding road segments,
+- The local service prepares tiles intersecting the viewport within the selected area, plus whole road segments within that area,
   capped at 24 per request. Zoom out too far or add widely separated roads and it
   asks you to zoom in/use fewer roads; it does not silently lower the resolution.
 - Automatic loading is currently limited to BQ28. Other forests need a reviewed
@@ -44,6 +45,38 @@ also rechecks the catalogue, so this is not yet a guaranteed offline workflow.
 Requests are serialized. The UI has a three-minute timeout; prepared tiles survive
 for a retry. National discovery, progress/cancellation, disk-cache eviction and
 full offline operation remain future work.
+
+## Extent restriction
+
+All loaded GeoPDF geographic bounding rectangles form the permitted analysis area
+(including overlays temporarily hidden with their visibility switch). Multiple
+rectangles are unioned without filling the gaps. The analysis boundary is the
+GeoPDF geographic extent, not a forest boundary inferred from its contents.
+Adding/removing a PDF immediately invalidates the old overlay and road summaries.
+Removing the last PDF requires a new explicit selection; it never reactivates an old area.
+
+With no PDF loaded, frame the desired area and click **Use this view as slope area**.
+This captures a fixed geographic rectangle, not a moving viewport. Clicking again
+replaces it. Panning/zooming cannot enlarge it. The button is disabled while PDFs
+are loaded, because their extents take precedence. Selection is session-only.
+
+The HTTP endpoint rejects requests without areas. Tile selection intersects both
+viewport and roads with their union. Entire road portions inside the area are
+requested even off-screen, so panning does not change their measurements.
+Outside portions retain their full length but are marked unknown. Tile limits
+remain explicit errors, never silent truncation or reduced resolution.
+
+Raw 512 m cache tiles are reusable between analysis areas; area-specific payloads
+mask cells by their centres and regenerate polygons from exactly that same masked
+grid. Boundary precision is therefore the native 1 m grid (not a sub-cell survey
+boundary). Downloads remain quantized to source COG blocks/512 m working tiles,
+with a one-cell elevation halo for slope at tile/analysis edges. The halo does not
+expand reported road coverage. No polygons are exposed from an entire border tile
+merely because part of that tile intersects the area.
+
+Extent checks: 52 JavaScript tests and 10 Python tests pass, including missing-area
+gating, frozen manual selection, PDF add/remove invalidation, outside-view requests,
+whole-road tile selection, clipped grid classes and cache separation by area.
 
 ## Validation — 8 September 2026
 

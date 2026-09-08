@@ -18,6 +18,9 @@ export function initialiseSteepSlope({
   corridorMetres = 75,
   loadSlope = createOnDemandSlopeLoader(),
   coverageButton,
+  areaButton,
+  areaElement,
+  getAnalysisAreas = () => [],
 }) {
   if (!map || !draw || !buttonElement) {
     if (buttonElement) buttonElement.disabled = true;
@@ -35,6 +38,24 @@ export function initialiseSteepSlope({
   let running = false;
   let roadError = false;
   let displayedSource, displayedFeatures;
+  let selectedArea = null;
+  const viewBounds = () => {
+    const view = map.getBounds();
+    return {west: view.getWest(), south: view.getSouth(), east: view.getEast(), north: view.getNorth()};
+  };
+  const currentAreas = () => {
+    const loaded = getAnalysisAreas();
+    return loaded.length ? loaded : selectedArea ? [selectedArea] : [];
+  };
+  const updateAreaControls = () => {
+    const count = getAnalysisAreas().length;
+    if (areaButton) areaButton.disabled = count > 0;
+    if (areaElement) areaElement.textContent = count
+      ? `Slope area: ${count} loaded GeoPDF extent${count > 1 ? 's' : ''}.`
+      : selectedArea ? 'Slope area fixed to your selected view. Pan without expanding it; use the button to replace it.'
+        : 'Load a GeoPDF, or frame an area and select Use this view as slope area.';
+  };
+  updateAreaControls();
   coverageButton?.addEventListener('click', async () => {
     try {
       const grid = await loadSlope({coverageOnly: true});
@@ -123,19 +144,19 @@ export function initialiseSteepSlope({
     roadError = false;
     showStatus(statusElement, `Preparing 1 m LiDAR slope tiles… First load may take longer; repeat views use the local cache.`);
     try {
-      const view = map.getBounds();
-      const bounds = { west: view.getWest(), south: view.getSouth(), east: view.getEast(), north: view.getNorth() };
-      const width = (bounds.east - bounds.west) * 111320 * Math.cos((bounds.south + bounds.north) * Math.PI / 360);
-      const height = (bounds.north - bounds.south) * 110574;
-      if (width > 20000 || height > 20000) throw new Error("Zoom in to a forest or road area (view under 20 km across).");
+      const bounds = viewBounds();
+      const areas = currentAreas();
+      if (!areas.length) throw new Error('Load a GeoPDF or select Use this view as slope area first.');
       const requestedRoads = draw.getAll().features.filter(feature => feature.geometry?.type === 'LineString' && feature.geometry.coordinates.length >= 2);
-      const grid = await loadSlope({bounds, roads: requestedRoads});
+      const grid = await loadSlope({bounds, roads: requestedRoads, areas});
       const result = grid.analyse({ bounds });
+      result.outsideAnalysisArea = !areas.some(area => bounds.east > area.west && bounds.west < area.east
+        && bounds.north > area.south && bounds.south < area.north);
       if (requestedRevision !== revision || !active) return;
       analysis = result;
       render();
       const roads = drawingOrEditing ? [] : draw.getAll().features.filter((feature) => feature.geometry?.type === "LineString" && feature.geometry.coordinates.length >= 2);
-      const signature = JSON.stringify(roads.map(({ id, geometry }) => ({ id, geometry })));
+      const signature = JSON.stringify({areas, roads: roads.map(({ id, geometry }) => ({ id, geometry }))});
       if (signature !== roadSignature) {
         const summary = roads.length ? grid.analyse({ roads }) : null;
         if (requestedRevision !== revision || !active) return;
@@ -199,6 +220,26 @@ export function initialiseSteepSlope({
     render();
     scheduleAnalysis(0);
   };
+  const areaChanged = () => {
+    revision += 1;
+    analysis = null;
+    roadAnalysis = null;
+    roadSignature = '';
+    roadError = false;
+    updateAreaControls();
+    render();
+    scheduleAnalysis(0);
+  };
+  areaButton?.addEventListener('click', () => {
+    if (getAnalysisAreas().length) return;
+    selectedArea = viewBounds();
+    areaChanged();
+  });
+  map.on('slope.area.change', () => {
+    // Removing the last GeoPDF must not silently reactivate an old manual area.
+    selectedArea = null;
+    areaChanged();
+  });
   map.on("draw.create", roadsChanged);
   map.on("draw.update", roadsChanged);
   map.on("draw.delete", roadsChanged);
@@ -217,8 +258,9 @@ export function initialiseSteepSlope({
 function resultSummary(analysis, roadAnalysis) {
   if (analysis.sourceName) {
     const timing = analysis.timing ? `${analysis.timing.tileCount} tiles; ${analysis.timing.cacheHits} cached; preparation ${analysis.timing.seconds.toFixed(1)} s. ` : '';
-    const overview = (analysis.outsideCoverage ? 'Outside trial coverage. Use View LiDAR test area. ' : '')
-      + `${analysis.sourceName} · 1 m reference grid · >35°. Outside mapped coverage is unknown, not flat. `;
+    const overview = (analysis.outsideAnalysisArea ? 'View outside the selected slope area; no view tiles requested. ' : '')
+      + (analysis.outsideCoverage ? 'Outside trial coverage. Use View LiDAR test area. ' : '')
+      + `${analysis.sourceName} · 1 m reference grid · >35°. Outside the analysis area or LiDAR coverage is unknown, not flat. `;
     if (!roadAnalysis?.totalRoadLengthMetres) return overview + timing + 'Draw a road within available coverage to measure its steep sections.';
     return overview + timing + `Roads: ${formatLength(roadAnalysis.steepRoadLengthMetres)} above 35°. `
       + (roadAnalysis.unknownLengthMetres > 0.01 ? `${formatLength(roadAnalysis.unknownLengthMetres)} has no LiDAR coverage.` : 'All road sections have coverage.');
