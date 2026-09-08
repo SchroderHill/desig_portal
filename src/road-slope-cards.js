@@ -6,6 +6,7 @@ export function roadSlopeStats(roads, analysis) {
     const summary = summaries.get(String(road.id));
     return {
       id: road.id,
+      ...(summary?.unknownLengthMetres !== undefined ? { unknownMetres: summary.unknownLengthMetres, sourceName: analysis.sourceName } : {}),
       name: road.properties?.name || `Road ${index + 1}`,
       steepMetres: summary ? Math.round(summary.steepLengthMetres) : null,
       totalMetres: summary ? Math.round(summary.roadLengthMetres) : null,
@@ -67,6 +68,10 @@ export function createRoadSlopePopups({ PopupClass, map }) {
       if (stat.steepMetres !== null && !editing) {
         value.textContent = `${stat.steepMetres.toLocaleString("en-NZ")} m >35°`;
         detail.textContent = `Total length = ${stat.totalMetres.toLocaleString("en-NZ")} m`;
+        if (stat.unknownMetres > 0.01) {
+          value.textContent = stat.unknownMetres >= stat.totalMetres - 0.5 ? 'Slope unknown' : `${stat.steepMetres.toLocaleString("en-NZ")} m >35° (partial)`;
+          detail.textContent += ` · ${Math.ceil(stat.unknownMetres).toLocaleString("en-NZ")} m not assessed`;
+        }
       } else {
         value.textContent = "—";
         detail.textContent = editing ? "Finish editing to update slope metres."
@@ -74,6 +79,11 @@ export function createRoadSlopePopups({ PopupClass, map }) {
           : active ? "Calculating slope metres…" : "Turn on Slope >35° to calculate.";
       }
       card.append(name, value, detail);
+      if (stat.sourceName) {
+        const source = documentRef.createElement('small');
+        source.textContent = 'LiDAR · 1 m grid · estimated metres';
+        card.append(source);
+      }
       let popup = popups.get(stat.id);
       if (!popup) {
         popup = new PopupClass({ closeButton: true, closeOnClick: false, anchor: "bottom", offset: 14,

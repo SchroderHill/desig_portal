@@ -27,6 +27,7 @@ if (map && draw) {
     draw,
     accessToken: window.mapboxgl?.accessToken,
     buttonElement: document.querySelector("#steep-slope-toggle"),
+    coverageButton: document.querySelector('#lidar-coverage'),
     resultElement: document.querySelector("#steep-slope-result"),
     PopupClass: window.mapboxgl?.Popup,
     statusElement: document.querySelector("#steep-slope-status"),

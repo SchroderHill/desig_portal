@@ -65,3 +65,11 @@ it("distinguishes a flat road from an unmeasured road and reports long distances
   expect(stats[1].steepMetres).toBeNull();
   expect(stats[2].steepMetres).toBe(1500);
 });
+
+it('preserves unknown coverage independently of measured steep metres', () => {
+  const stats = roadSlopeStats([{id: 'outside'}], {sourceName: 'LiDAR', roadSummaries: [
+    {roadId: 'outside', roadLengthMetres: 100, steepLengthMetres: 0, unknownLengthMetres: 100},
+  ]});
+  expect(stats[0].unknownMetres).toBe(100);
+  expect(stats[0].sourceName).toBe('LiDAR');
+});

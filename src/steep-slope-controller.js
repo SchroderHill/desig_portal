@@ -1,5 +1,4 @@
-import { analyseSteepSlope } from "./steep-slope-model.js";
-import { MapboxTerrainRgbProvider } from "./terrain-rgb.js";
+import { createLidarSlopeLoader } from "./lidar-slope.js";
 import { createRoadSlopePopups } from "./road-slope-cards.js";
 
 const SOURCE_ID = "steep-slope-35";
@@ -17,14 +16,15 @@ export function initialiseSteepSlope({
   PopupClass,
   thresholdDegrees = 35,
   corridorMetres = 75,
+  loadSlope = createLidarSlopeLoader(),
+  coverageButton,
 }) {
-  if (!map || !draw || !accessToken || !buttonElement) {
+  if (!map || !draw || !buttonElement) {
     if (buttonElement) buttonElement.disabled = true;
     showStatus(statusElement, "Slope analysis unavailable.", true);
     return;
   }
 
-  const terrainProvider = new MapboxTerrainRgbProvider({ accessToken });
   let active = false;
   let analysis = null;
   let revision = 0;
@@ -34,6 +34,14 @@ export function initialiseSteepSlope({
   let roadSignature = "";
   let running = false;
   let roadError = false;
+  let displayedSource, displayedFeatures;
+  coverageButton?.addEventListener('click', async () => {
+    try {
+      const grid = await loadSlope();
+      const [west, south, east, north] = grid.metadata.bounds;
+      map.fitBounds([[west, south], [east, north]], {padding: 60, pitch: 0, bearing: 0});
+    } catch (error) { showStatus(statusElement, error.message, true); }
+  });
   const renderCards = createRoadSlopePopups({ PopupClass, map });
   map.on("draw.selectionchange", event => renderCards.reopen?.(event.features.map(feature => feature.id)));
   map.on("road.popup.open", event => renderCards.reopen?.([event.roadId]));
@@ -55,7 +63,7 @@ export function initialiseSteepSlope({
     // getStyle() can throw while Mapbox is still fetching its initial style.
     if (!map.isStyleLoaded() && !map.getSource(SOURCE_ID)) return false;
     if (!map.getSource(SOURCE_ID)) {
-      map.addSource(SOURCE_ID, { type: "geojson", data: EMPTY_COLLECTION });
+      map.addSource(SOURCE_ID, { type: "geojson", data: EMPTY_COLLECTION, tolerance: 0 });
     }
     const beforeLayer = map.getLayer("road-earthworks-estimate-line")
       ? "road-earthworks-estimate-line"
@@ -78,7 +86,7 @@ export function initialiseSteepSlope({
         source: SOURCE_ID,
         paint: {
           "line-color": "#8b0000",
-          "line-width": 0.8,
+          "line-width": 0,
           "line-opacity": 0.8,
         },
       }, beforeLayer);
@@ -88,10 +96,10 @@ export function initialiseSteepSlope({
 
   const render = () => {
     const mode = draw.getMode?.();
-    if (mode) drawingOrEditing = mode === "draw_line_string" || mode === "direct_select";
+    if (mode) drawingOrEditing = mode === "draw_line_string" || mode === "draw_polygon";
     renderCards({
       roads: draw.getAll().features.filter(feature => feature.geometry?.type === "LineString" && feature.geometry.coordinates.length >= 2),
-      analysis: roadAnalysis, active, editing: drawingOrEditing && mode !== "direct_select", error: roadError,
+      analysis: roadAnalysis, active, editing: drawingOrEditing, error: roadError,
     });
     if (resultElement) {
       resultElement.hidden = !(active && analysis);
@@ -99,10 +107,11 @@ export function initialiseSteepSlope({
     }
     if (!ensureMapLayers()) return;
     const source = map.getSource(SOURCE_ID);
-    if (source) {
-      source.setData(active && analysis
-        ? { type: "FeatureCollection", features: analysis.features }
-        : EMPTY_COLLECTION);
+    const features = active && analysis ? analysis.features : EMPTY_COLLECTION.features;
+    if (source && (source !== displayedSource || features !== displayedFeatures)) {
+      source.setData({ type: 'FeatureCollection', features });
+      displayedSource = source;
+      displayedFeatures = features;
     }
   };
 
@@ -119,24 +128,15 @@ export function initialiseSteepSlope({
       const width = (bounds.east - bounds.west) * 111320 * Math.cos((bounds.south + bounds.north) * Math.PI / 360);
       const height = (bounds.north - bounds.south) * 110574;
       if (width > 20000 || height > 20000) throw new Error("Zoom in to a forest or road area (view under 20 km across).");
-      const result = await analyseSteepSlope({
-        roads: [],
-        bounds,
-        terrainProvider,
-        thresholdDegrees,
-        corridorMetres,
-        cellSizeMetres: 20,
-        maximumCells: 10000,
-      });
+      const grid = await loadSlope();
+      const result = grid.analyse({ bounds });
       if (requestedRevision !== revision || !active) return;
       analysis = result;
       render();
       const roads = drawingOrEditing ? [] : draw.getAll().features.filter((feature) => feature.geometry?.type === "LineString" && feature.geometry.coordinates.length >= 2);
       const signature = JSON.stringify(roads.map(({ id, geometry }) => ({ id, geometry })));
       if (signature !== roadSignature) {
-        const summary = roads.length ? await analyseSteepSlope({
-          roads, terrainProvider, thresholdDegrees, corridorMetres, cellSizeMetres: 20, maximumCells: 2500,
-        }) : null;
+        const summary = roads.length ? grid.analyse({ roads }) : null;
         if (requestedRevision !== revision || !active) return;
         roadAnalysis = summary;
         roadSignature = signature;
@@ -146,6 +146,8 @@ export function initialiseSteepSlope({
     } catch (error) {
       if (requestedRevision !== revision || !active) return;
       analysis = null;
+      roadAnalysis = null;
+      roadSignature = "";
       roadError = true;
       render();
       showStatus(statusElement, `Slope analysis unavailable: ${error.message}`, true);
@@ -200,7 +202,7 @@ export function initialiseSteepSlope({
   map.on("draw.update", roadsChanged);
   map.on("draw.delete", roadsChanged);
   map.on("draw.modechange", ({ mode }) => {
-    drawingOrEditing = mode === "draw_line_string" || mode === "direct_select";
+    drawingOrEditing = mode === "draw_line_string" || mode === "draw_polygon";
     if (drawingOrEditing) render();
     else scheduleAnalysis(0);
   });
@@ -212,6 +214,13 @@ export function initialiseSteepSlope({
 }
 
 function resultSummary(analysis, roadAnalysis) {
+  if (analysis.sourceName) {
+    const overview = (analysis.outsideCoverage ? 'No LiDAR coverage in this view. Use View Terraces LiDAR. ' : '')
+      + `${analysis.sourceName} · 1 m reference grid · >35°. Outside mapped coverage is unknown, not flat. `;
+    if (!roadAnalysis?.totalRoadLengthMetres) return overview + 'Draw a road within Terraces to measure its steep sections.';
+    return overview + `Roads: ${formatLength(roadAnalysis.steepRoadLengthMetres)} above 35°. `
+      + (roadAnalysis.unknownLengthMetres > 0.01 ? `${formatLength(roadAnalysis.unknownLengthMetres)} has no LiDAR coverage.` : 'All road sections have coverage.');
+  }
   const gridSize = Math.round(analysis.cellSizeMetres);
   const overview = `Slope >${analysis.thresholdDegrees}°: ${formatArea(analysis.steepAreaSquareMetres)} in the map view. `
     + `Grid: ~${gridSize} m${gridSize > 25 ? " (zoom in for more detail)" : ""}. `;
