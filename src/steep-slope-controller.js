@@ -35,6 +35,13 @@ export function initialiseSteepSlope({
   let running = false;
   let roadError = false;
   const renderCards = createRoadSlopePopups({ PopupClass, map });
+  map.on("draw.selectionchange", event => renderCards.reopen?.(event.features.map(feature => feature.id)));
+  map.on("road.popup.open", event => renderCards.reopen?.([event.roadId]));
+  map.on("click", event => {
+    if (["simple_select", "direct_select"].includes(draw.getMode?.())) {
+      renderCards.reopen?.(draw.getFeatureIdsAt?.(event.point) ?? []);
+    }
+  });
 
   const ensureMapLayers = () => {
     // getStyle() can throw while Mapbox is still fetching its initial style.
@@ -76,7 +83,7 @@ export function initialiseSteepSlope({
     if (mode) drawingOrEditing = mode === "draw_line_string" || mode === "direct_select";
     renderCards({
       roads: draw.getAll().features.filter(feature => feature.geometry?.type === "LineString" && feature.geometry.coordinates.length >= 2),
-      analysis: roadAnalysis, active, editing: drawingOrEditing, error: roadError,
+      analysis: roadAnalysis, active, editing: drawingOrEditing && mode !== "direct_select", error: roadError,
     });
     if (resultElement) {
       resultElement.hidden = !(active && analysis);

@@ -536,6 +536,7 @@ map.on('draw.create', e => {
   document.getElementById(`${layerId}-toggle`).addEventListener('change', ev => {
     if (ev.target.checked) {
       draw.changeMode('simple_select', { featureIds: [f.id] });
+      map.fire('road.popup.open', { roadId: f.id });
     } else {
       draw.changeMode('simple_select', { featureIds: [] });
     }
@@ -606,13 +607,14 @@ function showToast(message, duration = 3000) {
   </script>
   <style>
     .road-slope-popup .mapboxgl-popup-content { padding: 0; border-radius: 6px; box-shadow: 0 3px 14px #0005; }
+    .road-slope-popup .mapboxgl-popup-close-button { width: 36px; height: 36px; font-size: 22px; color: #555; }
     .road-slope-card { background: #fff; color: #262626; text-align: left; padding: 10px 13px; border-left: 4px solid #d7191c; border-radius: 6px; }
     .road-slope-card strong, .road-slope-card span, .road-slope-card small { display: block; }
-    .road-slope-card strong { font: 700 13px Arial, sans-serif; }
+    .road-slope-card strong { font: 700 13px Arial, sans-serif; padding-right: 24px; }
     .road-slope-card .road-slope-metres { color: #aa171b; font: 700 25px/1.3 Arial, sans-serif; margin: 4px 0; }
     .road-slope-card span { font: 12px/1.4 Arial, sans-serif; }
     .road-slope-card small { color: #555; margin-top: 8px; font: 10px Arial, sans-serif; }
   </style>
-  <script type="module" src="./geopdf-dist/geopdf-importer.js?v=20260908-road-popups"></script>
+  <script type="module" src="./geopdf-dist/geopdf-importer.js?v=20260908-popup-reopen"></script>
 </body>
 </html>

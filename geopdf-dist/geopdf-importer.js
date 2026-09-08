@@ -24553,40 +24553,49 @@ function IW(Z) {
 function gW({ PopupClass: Z, map: I }) {
   if (!Z) return () => {
   };
-  const g = I.getContainer().ownerDocument, C = /* @__PURE__ */ new Map();
-  let A = "";
-  return ({ roads: i, analysis: l, active: d, editing: c, error: s }) => {
-    const G = $o(i, l).map((m, a) => ({
-      ...m,
-      position: IW(i[a].geometry.coordinates)
-    })), b = JSON.stringify({ stats: G, active: d, editing: c, error: s });
-    if (b !== A) {
-      A = b;
-      for (const [m, a] of C)
-        (!d || c || !G.some((o) => o.id === m)) && (a.remove(), C.delete(m));
-      if (!(!d || c))
-        for (const m of G) {
-          const a = g.createElement("div");
-          a.className = "road-slope-card", a.dataset.roadId = String(m.id);
-          const o = g.createElement("strong");
-          o.textContent = m.name;
-          const W = g.createElement("span");
-          W.className = "road-slope-metres";
-          const B = g.createElement("span");
-          m.steepMetres !== null && !c ? (W.textContent = `${m.steepMetres.toLocaleString("en-NZ")} m`, B.textContent = `in terrain >35° · ${m.percentage}% of ${m.totalMetres.toLocaleString("en-NZ")} m total`) : (W.textContent = "—", B.textContent = c ? "Finish editing to update slope metres." : s ? "Slope measurement unavailable. Retry Slope." : d ? "Calculating slope metres…" : "Turn on Slope >35° to calculate."), a.append(o, W, B);
-          let h = C.get(m.id);
-          h || (h = new Z({
-            closeButton: !1,
+  const g = I.getContainer().ownerDocument, C = /* @__PURE__ */ new Map(), A = /* @__PURE__ */ new Set();
+  let i, l = "";
+  const d = (c) => {
+    i = c;
+    const { roads: s, analysis: G, active: b, editing: m, error: a } = c, o = $o(s, G).map((B, h) => ({
+      ...B,
+      position: IW(s[h].geometry.coordinates)
+    })), W = JSON.stringify({ stats: o, active: b, editing: m, error: a });
+    if (W !== l) {
+      l = W;
+      for (const B of A)
+        o.some((h) => h.id === B) || A.delete(B);
+      for (const [B, h] of C)
+        (!b || m || !o.some((Y) => Y.id === B)) && (C.delete(B), h.remove());
+      if (!(!b || m))
+        for (const B of o) {
+          if (A.has(B.id)) continue;
+          const h = g.createElement("div");
+          h.className = "road-slope-card", h.dataset.roadId = String(B.id);
+          const Y = g.createElement("strong");
+          Y.textContent = B.name;
+          const t = g.createElement("span");
+          t.className = "road-slope-metres";
+          const w = g.createElement("span");
+          B.steepMetres !== null && !m ? (t.textContent = `${B.steepMetres.toLocaleString("en-NZ")} m >35°`, w.textContent = `Total length = ${B.totalMetres.toLocaleString("en-NZ")} m`) : (t.textContent = "—", w.textContent = m ? "Finish editing to update slope metres." : a ? "Slope measurement unavailable. Retry Slope." : b ? "Calculating slope metres…" : "Turn on Slope >35° to calculate."), h.append(Y, t, w);
+          let n = C.get(B.id);
+          n || (n = new Z({
+            closeButton: !0,
             closeOnClick: !1,
             anchor: "bottom",
             offset: 14,
             className: "road-slope-popup",
             maxWidth: "200px",
             focusAfterOpen: !1
-          }), C.set(m.id, h)), h.setLngLat(m.position).setDOMContent(a).addTo(I);
+          }), n.on("close", () => {
+            C.get(B.id) === n && (A.add(B.id), C.delete(B.id));
+          }), C.set(B.id, n)), n.setLngLat(B.position).setDOMContent(h), n.isOpen() || n.addTo(I);
         }
     }
   };
+  return d.reopen = (c) => {
+    !i || !c.some((s) => A.has(s)) || (c.forEach((s) => A.delete(s)), l = "", d(i));
+  }, d;
 }
 const eg = "steep-slope-35", ll = "steep-slope-35-fill", dl = "steep-slope-35-outline", cl = { type: "FeatureCollection", features: [] };
 function CW({
@@ -24606,7 +24615,11 @@ function CW({
   }
   const s = new nd({ accessToken: g });
   let G = !1, b = null, m = 0, a = null, o = !1, W = null, B = "", h = !1, Y = !1;
-  const t = gW({ PopupClass: l, map: Z }), w = () => {
+  const t = gW({ PopupClass: l, map: Z });
+  Z.on("draw.selectionchange", (e) => t.reopen?.(e.features.map((u) => u.id))), Z.on("road.popup.open", (e) => t.reopen?.([e.roadId])), Z.on("click", (e) => {
+    ["simple_select", "direct_select"].includes(I.getMode?.()) && t.reopen?.(I.getFeatureIdsAt?.(e.point) ?? []);
+  });
+  const w = () => {
     if (!Z.isStyleLoaded() && !Z.getSource(eg)) return !1;
     Z.getSource(eg) || Z.addSource(eg, { type: "geojson", data: cl });
     const e = Z.getLayer("road-earthworks-estimate-line") ? "road-earthworks-estimate-line" : Z.getLayer("vertices") ? "vertices" : void 0;
@@ -24634,7 +24647,7 @@ function CW({
       roads: I.getAll().features.filter((y) => y.geometry?.type === "LineString" && y.geometry.coordinates.length >= 2),
       analysis: W,
       active: G,
-      editing: o,
+      editing: o && e !== "direct_select",
       error: Y
     }), A && (A.hidden = !(G && b), A.textContent = G && b ? AW(b, o ? null : W) : ""), !w()) return;
     const u = Z.getSource(eg);

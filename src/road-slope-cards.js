@@ -32,22 +32,30 @@ export function createRoadSlopePopups({ PopupClass, map }) {
   if (!PopupClass) return () => {};
   const documentRef = map.getContainer().ownerDocument;
   const popups = new Map();
+  const closed = new Set();
+  let latest;
   let previous = "";
-  return ({ roads, analysis, active, editing, error }) => {
+  const render = (input) => {
+    latest = input;
+    const { roads, analysis, active, editing, error } = input;
     const stats = roadSlopeStats(roads, analysis).map((stat, index) => ({
       ...stat, position: roadMidpoint(roads[index].geometry.coordinates),
     }));
     const signature = JSON.stringify({ stats, active, editing, error });
     if (signature === previous) return;
     previous = signature;
+    for (const id of closed) {
+      if (!stats.some(stat => stat.id === id)) closed.delete(id);
+    }
     for (const [id, popup] of popups) {
       if (!active || editing || !stats.some(stat => stat.id === id)) {
-        popup.remove();
         popups.delete(id);
+        popup.remove();
       }
     }
     if (!active || editing) return;
     for (const stat of stats) {
+      if (closed.has(stat.id)) continue;
       const card = documentRef.createElement("div");
       card.className = "road-slope-card";
       card.dataset.roadId = String(stat.id);
@@ -57,8 +65,8 @@ export function createRoadSlopePopups({ PopupClass, map }) {
       value.className = "road-slope-metres";
       const detail = documentRef.createElement("span");
       if (stat.steepMetres !== null && !editing) {
-        value.textContent = `${stat.steepMetres.toLocaleString("en-NZ")} m`;
-        detail.textContent = `in terrain >35° · ${stat.percentage}% of ${stat.totalMetres.toLocaleString("en-NZ")} m total`;
+        value.textContent = `${stat.steepMetres.toLocaleString("en-NZ")} m >35°`;
+        detail.textContent = `Total length = ${stat.totalMetres.toLocaleString("en-NZ")} m`;
       } else {
         value.textContent = "—";
         detail.textContent = editing ? "Finish editing to update slope metres."
@@ -68,11 +76,26 @@ export function createRoadSlopePopups({ PopupClass, map }) {
       card.append(name, value, detail);
       let popup = popups.get(stat.id);
       if (!popup) {
-        popup = new PopupClass({ closeButton: false, closeOnClick: false, anchor: "bottom", offset: 14,
+        popup = new PopupClass({ closeButton: true, closeOnClick: false, anchor: "bottom", offset: 14,
           className: "road-slope-popup", maxWidth: "200px", focusAfterOpen: false });
+        popup.on("close", () => {
+          // Programmatic hiding removes the entry first; only user dismissal persists.
+          if (popups.get(stat.id) === popup) {
+            closed.add(stat.id);
+            popups.delete(stat.id);
+          }
+        });
         popups.set(stat.id, popup);
       }
-      popup.setLngLat(stat.position).setDOMContent(card).addTo(map);
+      popup.setLngLat(stat.position).setDOMContent(card);
+      if (!popup.isOpen()) popup.addTo(map);
     }
   };
+  render.reopen = (ids) => {
+    if (!latest || !ids.some(id => closed.has(id))) return;
+    ids.forEach(id => closed.delete(id));
+    previous = "";
+    render(latest);
+  };
+  return render;
 }

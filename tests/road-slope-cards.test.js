@@ -24,10 +24,12 @@ it("creates one anchored popup per road and removes obsolete popups", () => {
   const instances = [];
   class Popup {
     constructor() { instances.push(this); }
+    on(event, callback) { this.close = callback; return this; }
+    isOpen() { return this.removed === false; }
     setLngLat(value) { this.position = value; return this; }
     setDOMContent(value) { this.content = value; return this; }
     addTo() { this.removed = false; return this; }
-    remove() { this.removed = true; }
+    remove() { this.removed = true; this.close?.(); }
   }
   const documentRef = {createElement: () => ({dataset: {}, append(...children) {this.children = children;}})};
   const render = createRoadSlopePopups({PopupClass: Popup, map: {getContainer: () => ({ownerDocument: documentRef})}});
@@ -36,11 +38,21 @@ it("creates one anchored popup per road and removes obsolete popups", () => {
   expect(instances).toHaveLength(2);
   expect(instances[0].position[0]).toBeCloseTo(0.005);
   expect(instances[1].content.children[0].textContent).toBe("Road 2");
+  instances[0].remove();
+  render({roads, active: true, analysis: {roadSummaries: [{roadId: "a", roadLengthMetres: 200, steepLengthMetres: 100}]}});
+  expect(instances).toHaveLength(2);
+  render.reopen(["a"]);
+  expect(instances).toHaveLength(3);
+  expect(instances[2].content.children[1].textContent).toBe("100 m >35°");
+  expect(instances[2].content.children[2].textContent).toBe("Total length = 200 m");
   render({roads: roads.slice(1), active: true});
   expect(instances[0].removed).toBe(true);
   expect(instances[1].removed).toBe(false);
   render({roads: roads.slice(1), active: false});
   expect(instances[1].removed).toBe(true);
+  render({roads: roads.slice(1), active: true});
+  expect(instances).toHaveLength(4);
+  expect(instances[3].removed).toBe(false);
 });
 
 it("distinguishes a flat road from an unmeasured road and reports long distances in metres", () => {
