@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { analyseSteepSlope, slopeDegreesFromElevations } from "../src/steep-slope-model.js";
+import {
+  analyseSteepSlope,
+  isSteeperThan,
+  slopeDegreesFromElevations,
+} from "../src/steep-slope-model.js";
 
 const road = {
   id: "road-1",
@@ -18,6 +22,30 @@ describe("steep terrain model", () => {
       north: 10,
       sampleSpacingMetres: 20,
     })).toBeCloseTo(45, 6);
+  });
+
+  it("treats exactly 35 degrees as the boundary, not as greater than 35 degrees", () => {
+    expect(isSteeperThan(35, 35)).toBe(false);
+    expect(isSteeperThan(35.0001, 35)).toBe(true);
+    expect(isSteeperThan(34.9999, 35)).toBe(false);
+  });
+
+  it("returns an empty result without requesting terrain when there are no roads", async () => {
+    let requestedTerrain = false;
+    const analysis = await analyseSteepSlope({
+      roads: [],
+      terrainProvider: {
+        async sampleLine() {
+          requestedTerrain = true;
+          return [];
+        },
+      },
+    });
+
+    expect(requestedTerrain).toBe(false);
+    expect(analysis.features).toEqual([]);
+    expect(analysis.roadSummaries).toEqual([]);
+    expect(analysis.totalRoadLengthMetres).toBe(0);
   });
 
   it("returns no red polygons or steep road length for flat terrain", async () => {
@@ -50,6 +78,49 @@ describe("steep terrain model", () => {
     });
     expect(analysis.steepRoadLengthMetres).toBeCloseTo(analysis.totalRoadLengthMetres, 6);
     expect(analysis.steepAreaSquareMetres).toBeGreaterThan(0);
+  });
+
+  it("measures only the portion of a road that enters steep terrain", async () => {
+    const analysis = await analyseSteepSlope({
+      roads: [road],
+      terrainProvider: terrainFromLongitude((xMetres) => (
+        xMetres < 55 ? 0 : xMetres - 55
+      )),
+      thresholdDegrees: 35,
+      cellSizeMetres: 10,
+      corridorMetres: 20,
+    });
+
+    expect(analysis.steepRoadLengthMetres).toBeGreaterThan(0);
+    expect(analysis.steepRoadLengthMetres).toBeLessThan(analysis.totalRoadLengthMetres);
+  });
+
+  it("keeps separate road summaries while reporting combined totals", async () => {
+    const secondRoad = {
+      id: "road-2",
+      geometry: {
+        type: "LineString",
+        coordinates: [[0.01, 0], [0.011, 0]],
+      },
+    };
+    const analysis = await analyseSteepSlope({
+      roads: [road, secondRoad],
+      terrainProvider: terrainFromLongitude((xMetres) => (xMetres < 500 ? 0 : xMetres)),
+      thresholdDegrees: 35,
+      cellSizeMetres: 20,
+      corridorMetres: 30,
+    });
+
+    expect(analysis.roadSummaries).toHaveLength(2);
+    expect(analysis.roadSummaries[0].steepLengthMetres).toBe(0);
+    expect(analysis.roadSummaries[1].steepLengthMetres).toBeCloseTo(
+      analysis.roadSummaries[1].roadLengthMetres,
+      6,
+    );
+    expect(analysis.totalRoadLengthMetres).toBeCloseTo(
+      analysis.roadSummaries[0].roadLengthMetres + analysis.roadSummaries[1].roadLengthMetres,
+      6,
+    );
   });
 
   it("keeps the DEM request bounded by increasing grid size for long roads", async () => {

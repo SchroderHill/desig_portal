@@ -20,6 +20,12 @@ export function slopeDegreesFromElevations({
   return Math.atan(Math.hypot(eastWestGradient, northSouthGradient)) * 180 / Math.PI;
 }
 
+export function isSteeperThan(slopeDegrees, thresholdDegrees = 35) {
+  return Number.isFinite(slopeDegrees)
+    && Number.isFinite(thresholdDegrees)
+    && slopeDegrees > thresholdDegrees;
+}
+
 export async function analyseSteepSlope({
   roads,
   terrainProvider,
@@ -87,7 +93,7 @@ export async function analyseSteepSlope({
     });
     slopesByCell.set(cell.key, slopeDegrees);
 
-    if (slopeDegrees <= threshold) return;
+    if (!isSteeperThan(slopeDegrees, threshold)) return;
     const halfCell = effectiveCellSize / 2;
     const corners = [
       projection.toLngLat([cell.x - halfCell, cell.y - halfCell]),
@@ -121,7 +127,7 @@ export async function analyseSteepSlope({
         (start[1] + end[1]) / 2,
       ]);
       const slope = slopesByCell.get(cellKeyForPoint(midpoint, effectiveCellSize));
-      if (slope > threshold) steepLengthMetres += distanceMetres(start, end);
+      if (isSteeperThan(slope, threshold)) steepLengthMetres += distanceMetres(start, end);
     }
 
     return {
