@@ -24533,7 +24533,7 @@ function _o({
   const c = new nd({ accessToken: g });
   let s = !1, G = null, b = 0, m = null, a = !1;
   const o = () => {
-    if (!Z.getStyle()?.layers) return !1;
+    if (!Z.isStyleLoaded()) return !1;
     Z.getSource(vg) || Z.addSource(vg, { type: "geojson", data: cl });
     const Y = Z.getLayer("road-earthworks-estimate-line") ? "road-earthworks-estimate-line" : Z.getLayer("vertices") ? "vertices" : void 0;
     return Z.getLayer(ll) || Z.addLayer({
@@ -24555,7 +24555,7 @@ function _o({
       }
     }, Y), !0;
   }, W = () => {
-    o();
+    if (!o()) return;
     const Y = Z.getSource(vg);
     Y && Y.setData(s && !a && G ? { type: "FeatureCollection", features: G.features } : cl), A && (A.hidden = !(s && !a && G), A.textContent = s && G ? $o(G) : "");
   }, B = async (Y) => {

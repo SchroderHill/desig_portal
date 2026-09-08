@@ -30,7 +30,8 @@ export function initialiseSteepSlope({
   let drawingOrEditing = false;
 
   const ensureMapLayers = () => {
-    if (!map.getStyle()?.layers) return false;
+    // getStyle() can throw while Mapbox is still fetching its initial style.
+    if (!map.isStyleLoaded()) return false;
     if (!map.getSource(SOURCE_ID)) {
       map.addSource(SOURCE_ID, { type: "geojson", data: EMPTY_COLLECTION });
     }
@@ -64,7 +65,7 @@ export function initialiseSteepSlope({
   };
 
   const render = () => {
-    ensureMapLayers();
+    if (!ensureMapLayers()) return;
     const source = map.getSource(SOURCE_ID);
     if (source) {
       source.setData(active && !drawingOrEditing && analysis
