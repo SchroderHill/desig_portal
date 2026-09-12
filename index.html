@@ -272,11 +272,11 @@
     // Buttons for draw modes
     document.getElementById('draw-line').addEventListener('click', () => {
       draw.changeMode('draw_line_string');
-      showToast("left click to start drawing.<br>Double click to stop drawing.");
+      showToast("Left click to draw · double click to finish.<br>Hold the scroll wheel and drag to pan.");
     });
     document.getElementById('draw-polygon').addEventListener('click', () => {
       draw.changeMode('draw_polygon');
-      showToast("left click to start drawing.<br>Double click to stop drawing.");
+      showToast("Left click to draw · double click to finish.<br>Hold the scroll wheel and drag to pan.");
     });
     document.getElementById('hillshade-toggle').addEventListener('click', event => {
       hillshadeEnabled = !hillshadeEnabled;

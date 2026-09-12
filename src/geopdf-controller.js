@@ -2,6 +2,7 @@ import { parseGeoPdf } from "./geopdf.js";
 import { initialiseRoadEarthworks } from "./road-earthworks-controller.js";
 import { initialiseSteepSlope } from "./steep-slope-controller.js";
 import { downloadDesignKml } from "./kml-export.js";
+import { enableMiddleDragPan } from "./middle-drag-pan.js";
 
 const portal = window.designPortal ?? window.designPortalGeoPdf;
 const map = portal?.map;
@@ -14,6 +15,7 @@ const exportButton = document.querySelector("#export");
 const overlays = new Map();
 
 if (map && draw) {
+  enableMiddleDragPan({ map, draw });
   initialiseKmlExport();
   initialiseRoadEarthworks({
     map,
