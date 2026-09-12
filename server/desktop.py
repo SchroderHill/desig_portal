@@ -9,7 +9,7 @@ import threading
 from urllib.parse import urlparse, unquote
 import uuid
 
-from slope_service import SlopeService, TEST_BOUNDS
+from slope_service import SlopeService
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -18,6 +18,8 @@ def create_server(port=4174, service=None):
     service = service or SlopeService()
     executor = ThreadPoolExecutor(max_workers=1)
     jobs = {}
+    progress = {}
+    cancellations = {}
     lock = threading.Lock()
 
     class Handler(SimpleHTTPRequestHandler):
@@ -42,6 +44,12 @@ def create_server(port=4174, service=None):
         def do_POST(self):
             if not self.allowed_origin():
                 return self.send_json(dict(error='Only same-origin desktop requests are allowed'), 403)
+            if self.path.startswith('/api/slope/cancel/'):
+                key = self.path.rsplit('/', 1)[-1]
+                event = cancellations.get(key)
+                if event:
+                    event.set()
+                return self.send_json(dict(cancelled=bool(event)))
             if self.path != '/api/slope/prepare':
                 return self.send_json(dict(error='Not found'), 404)
             try:
@@ -60,9 +68,15 @@ def create_server(port=4174, service=None):
                         return self.send_json(dict(error='Slope service busy; retry shortly'), 429)
                     if len(jobs) > 100:
                         for key in list(jobs):
-                            if jobs[key].done(): del jobs[key]
+                            if jobs[key].done():
+                                del jobs[key]
+                                progress.pop(key, None)
+                                cancellations.pop(key, None)
                     key = uuid.uuid4().hex
-                    jobs[key] = executor.submit(service.prepare, request['bounds'], request.get('roads', []), request['areas'])
+                    cancellations[key] = threading.Event()
+                    progress[key] = 'Waiting for LiDAR preparation…'
+                    jobs[key] = executor.submit(service.prepare, request['bounds'], request.get('roads', []), request['areas'],
+                        progress=lambda message: progress.update({key: message}), cancelled=cancellations[key].is_set)
                 self.send_json(dict(job=key), 202)
             except (ValueError, TypeError, KeyError) as error:
                 self.send_json(dict(error=str(error)), 400)
@@ -72,12 +86,12 @@ def create_server(port=4174, service=None):
                 return self.send_json(dict(error='Only loopback desktop access is allowed'), 403)
             path = urlparse(self.path).path
             if path == '/api/slope/coverage':
-                return self.send_json(dict(name='Kenningtons on-demand trial', bounds=TEST_BOUNDS))
+                return self.send_json(dict(name='LINZ national 1 m DEM', bounds=[166, -48, 180, -33]))
             if path.startswith('/api/slope/jobs/'):
                 key = path.rsplit('/', 1)[-1]
                 job = jobs.get(key)
                 if job is None: return self.send_json(dict(error='Unknown slope job'), 404)
-                if not job.done(): return self.send_json(dict(state='preparing'))
+                if not job.done(): return self.send_json(dict(state='preparing', message=progress.get(key)))
                 try: return self.send_json(dict(state='ready', result=job.result()))
                 except Exception as error: return self.send_json(dict(state='error', error=str(error)), 502)
             if path.startswith('/api/slope/tiles/'):

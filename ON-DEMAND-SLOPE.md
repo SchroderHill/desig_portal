@@ -1,118 +1,108 @@
-# Desktop on-demand LiDAR trial — Kenningtons
+# On-demand LINZ DEM slope analysis
 
-This is a local desktop prototype on `slope-lidar`, not a nationwide production service.
-The existing Terraces reference assets remain unchanged. The default slope loader now
-uses a local Python service to fetch native 1 m elevation windows from public LINZ
-Topo50 sheet BQ28. **View LiDAR test area** centres the map on Kenningtons.
+The desktop portal now discovers the appropriate sources from LINZ's national
+1 m DEM collection for any supported New Zealand GeoPDF or fixed manual area.
+It no longer requires a configured forest or a visit to the Kenningtons test area.
+Supported coordinates are 166–180 degrees east, 48–33 degrees south; overseas
+maps are not supported by this LINZ/NZTM pipeline. Missing elevation is unknown.
 
 ## Run
 
-Requires Python with `server/requirements.txt` installed, plus the existing Node tooling.
+Install the locked JavaScript dependencies and `server/requirements.txt`, then:
 
 ```powershell
-npm ci --ignore-scripts
 npm run build
-python server/desktop.py --port 4174
+python server/desktop.py --port 4176
 ```
 
-Open http://127.0.0.1:4174/?revision=on-demand#16.5/-41.39999/173.83228/0/0
-and load a GeoPDF, or click **Use this view as slope area**, then turn on **Slope >35°**.
-Do not open `index.html` using `file://` or the old
-static preview server: they cannot perform on-demand analysis. Keep the Python
-process running. The server binds only to this computer, not phones or the LAN.
+Open http://127.0.0.1:4176/ and import a GeoPDF, then enable **Slope >35°**.
+Without a PDF, explicitly click **Use this view as slope area** before enabling
+slope. The Python server must stay running. Static hosting cannot run this service.
+The reassessment used port 4176 to leave the original build on 4174 untouched.
 
-## Method and bounds
+## Source selection and calculation
 
-- Fixed source: https://nz-elevation.s3-ap-southeast-2.amazonaws.com/new-zealand/new-zealand/dem_1m/2193/BQ28.json
-- Native aligned EPSG:2193 cells; no zoom-dependent resampling.
-- Horn 3x3 slope in degrees, strict `>35`, one-cell halo at cache boundaries.
-- Missing elevation in any 3x3 neighbour remains unknown, never flat.
-- Each 512 m tile contains a two-bit classification grid and unsimplified polygons
-  from those same cells. Road metres use the grid, not screen pixels or simplified geometry.
-- The local service prepares tiles intersecting the viewport within the selected area, plus whole road segments within that area,
-  capped at 24 per request. Zoom out too far or add widely separated roads and it
-  asks you to zoom in/use fewer roads; it does not silently lower the resolution.
-- Automatic loading is currently limited to BQ28. Other forests need a reviewed
-  source configuration. Areas without LiDAR remain unknown.
-- Derived tiles are cached in the OS temporary directory under
-  `design-portal-slope-cache`, outside this OneDrive repository. Cache keys include
-  the source checksum and algorithm version. Browser memory retains up to 48 tiles.
-- The server requires same-origin loopback requests and does not serve source code,
-  git metadata, directory listings, or local reference files. No forest files are uploaded.
+- The service rechecks the official national STAC collection on startup. A small
+  bundled source index (424 items when refreshed on 9 September 2026) avoids
+  fetching every item's metadata on first use. Item checksums determine reuse;
+  new or changed catalogue items are fetched automatically. No forest names or
+  project directories participate in source selection.
+- `python scripts/update-linz-index.py` refreshes that metadata snapshot. The
+  snapshot contains source locations, bounds and checksums, not terrain pixels.
+- Only selected 512 m working tiles are read from the intersecting public LINZ
+  Cloud Optimized GeoTIFFs. Adjacent source sheets supply the one-cell halo.
+  Elevations are mosaicked before Horn 3x3 slope calculation, at native aligned
+  EPSG:2193 1 m resolution. Missing neighbours remain unknown; no resampling or
+  Mapbox fallback is used. Classification is strictly greater than 35 degrees.
+- The existing hillshade is shaded PNG imagery, not elevation. It remains a
+  separate display. Mapbox 3D terrain and earthworks estimates are also separate.
+- The classified two-bit grid supplies both unsimplified overlay polygons and
+  road measurements. Lengths are horizontal model estimates, not survey results.
 
-First use needs internet for the catalogue and uncached windows; a service restart
-also rechecks the catalogue, so this is not yet a guaranteed offline workflow.
-Requests are serialized. The UI has a three-minute timeout; prepared tiles survive
-for a retry. National discovery, progress/cancellation, disk-cache eviction and
-full offline operation remain future work.
+## Extent, loading and limits
 
-## Extent restriction
+Loaded GeoPDF geographic bounding rectangles form a union without filling gaps;
+visibility switches do not change permission. View tiles and off-screen road
+segments are intersected with that union. With no PDF, the manual rectangle is
+fixed until explicitly replaced. Removing the last PDF clears selection.
 
-All loaded GeoPDF geographic bounding rectangles form the permitted analysis area
-(including overlays temporarily hidden with their visibility switch). Multiple
-rectangles are unioned without filling the gaps. The analysis boundary is the
-GeoPDF geographic extent, not a forest boundary inferred from its contents.
-Adding/removing a PDF immediately invalidates the old overlay and road summaries.
-Removing the last PDF requires a new explicit selection; it never reactivates an old area.
+Downloads are quantized to source COG blocks and 512 m tiles with a one-cell halo.
+Reported coverage is masked to the permitted area by 1 m cell centres. The
+geographic extent is not an inferred forest boundary.
 
-With no PDF loaded, frame the desired area and click **Use this view as slope area**.
-This captures a fixed geographic rectangle, not a moving viewport. Clicking again
-replaces it. Panning/zooming cannot enlarge it. The button is disabled while PDFs
-are loaded, because their extents take precedence. Selection is session-only.
+Preparation is serial with per-tile progress. Superseded requests are cancelled
+between tiles (an in-progress native read may finish first). The loader waits for
+an occupied slot and uses a 15-minute preparation timeout. Metadata requests have
+bounded retries with TLS verification. Network errors are errors, not no-coverage
+results. Completed unchanged-road measurements survive unrelated view failures.
 
-The HTTP endpoint rejects requests without areas. Tile selection intersects both
-viewport and roads with their union. Entire road portions inside the area are
-requested even off-screen, so panning does not change their measurements.
-Outside portions retain their full length but are marked unknown. Tile limits
-remain explicit errors, never silent truncation or reduced resolution.
+A request may contain up to 1024 native tiles, 100 roads and 100 km of road length.
+Larger requests produce an explicit resource-limit error and require a smaller
+view or road set; resolution is never silently reduced. Large polygon overlays
+still require significant browser memory. This supports arbitrary covered
+locations, not unbounded whole-country analysis in one view.
 
-Raw 512 m cache tiles are reusable between analysis areas; area-specific payloads
-mask cells by their centres and regenerate polygons from exactly that same masked
-grid. Boundary precision is therefore the native 1 m grid (not a sub-cell survey
-boundary). Downloads remain quantized to source COG blocks/512 m working tiles,
-with a one-cell elevation halo for slope at tile/analysis edges. The halo does not
-expand reported road coverage. No polygons are exposed from an entire border tile
-merely because part of that tile intersects the area.
+Derived raw and extent-masked tiles are cached in the OS temporary directory
+`design-portal-slope-cache`. Cache identity includes catalogue source checksums
+and algorithm version. Browser LRU holds up to 48 tiles between requests, in
+addition to the dataset needed for the active view and roads. There is no disk
+cache eviction yet. Restart needs a successful catalogue check; offline use is
+not guaranteed. The service binds only to loopback and does not upload forest
+files or serve project source code. Nothing has been pushed or published.
 
-Extent checks: 52 JavaScript tests and 10 Python tests pass, including missing-area
-gating, frozen manual selection, PDF add/remove invalidation, outside-view requests,
-whole-road tile selection, clipped grid classes and cache separation by area.
+## Validation — 9 September 2026
 
-## Validation — 8 September 2026
+`python scripts/check-national-slope.py` streamed small elevation windows using
+normal discovery at Rams Head (BR28), Terraces (BR27), Kenningtons (BQ28) and
+Auckland (BA32). All returned valid classified cells. Indexed startup took about
+0.5 seconds; small-window preparation took 0.7–1.4 seconds on this run. See
+`national-slope-validation.json` for sample counts and timings.
 
-Read-only reference: `D:/1A Documents/Forest/M&R_Kenningtons Road/layers/Clipped_slope.tif`.
-The forest-map QA checks preserved native 1 m resolution, degree units, strict
-35-degree classification and NoData. No QGIS source or final map was changed.
+At Rams Head, 9,238 of 9,239 common valid cells agreed with the existing local
+Clipped_Slope.tif >35-degree classification. The discrepancy was not investigated
+further; this is numerical consistency evidence, not independent field accuracy.
+No local DEM, slope raster, QGIS project or final forest map was modified.
 
-Four tiles, columns 3260–3261 / rows 8951–8952, were downloaded into a new empty
-derived cache. Of 833,601 cells valid in both datasets, 833,593 agreed:
-**99.9990403% agreement**. All eight differing reference values lie between
-34.9995422 and 35.0004005 degrees. This demonstrates close numerical consistency
-near the threshold, not independent survey/ground-truth accuracy. Exact cause of
-the tiny differences (source encoding and/or numerical precision) is not established.
+Browser QA imported RamsheadHP_Imagery20260804.pdf into the isolated build.
+Shading appeared before drawing. Its full extent prepared 38 tiles in 33.2 seconds
+(one raw tile cached); subsequent views reused cache. A disposable road reported
+122 m >35 degrees / 446 m total, unchanged after pan and zoom. Its popup closed
+and reopened by clicking the road. Removing the final GeoPDF cleared the area and
+invalidated slope results. Mapbox earthworks remained separately labelled.
 
-Measured service preparation: 3.436 seconds for four uncached derived tiles,
-0.001 seconds on immediate disk-cache repeat; gzip payload 948,661 bytes.
-Repeat fresh-cache run: 3.442 seconds. These are this machine/network's timings,
-not a cold-OS-network-cache guarantee and not end-to-end browser render latency.
-
-Browser checks: red polygons visible before drawing; test road reported 149 m
-above 35 degrees / 285 m total; popup closed and reopened by road click; slope
-off/on retained the same result. Initial six-tile viewport preparation displayed
-3.4 seconds (one cached tile), and adding the test road prepared 12 tiles in
-5.1 seconds (six cached). The road is a disposable test transect, not a surveyed road.
-
-Automated checks: 51 JavaScript tests and eight Python tests passed; production
-build passed. Existing GeoPDF, KML, terrain, earthworks and popup tests still pass.
-Not every feature was manually retested. Earthworks remains separately labelled
-as a Mapbox estimate; LiDAR slope is not a LiDAR earthworks-volume calculation.
+Automated checks cover source discovery/cache changes, catalogue failures,
+adjacent-sheet mosaicking before slope, unknown neighbours, disjoint extents,
+roads outside view, progress/cancellation and preservation of road measurements
+on view errors, plus the existing numerical/GeoPDF/road tests.
+All 56 JavaScript tests and 18 Python tests passed, and the production build
+succeeded after the final changes.
 
 ```powershell
 npm test
 python -m unittest discover -s server -p 'test_*.py'
-python server/validate_kenningtons.py --reference 'D:/1A Documents/Forest/M&R_Kenningtons Road/layers/Clipped_slope.tif'
+npm run build
 ```
 
-Dependency installation reported seven existing npm audit findings (two moderate,
-four high, one critical). Dependency remediation has not been included in this
-terrain trial. Do not expose this development server publicly.
+The previous Terraces numerical baseline is retained in LIDAR-SLOPE.md and its
+unchanged data package. Existing dependency security findings were not remediated
+as part of this source-selection change.

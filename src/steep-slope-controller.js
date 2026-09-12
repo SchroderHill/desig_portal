@@ -39,6 +39,7 @@ export function initialiseSteepSlope({
   let roadError = false;
   let displayedSource, displayedFeatures;
   let selectedArea = null;
+  let pendingRequest = null;
   const viewBounds = () => {
     const view = map.getBounds();
     return {west: view.getWest(), south: view.getSouth(), east: view.getEast(), north: view.getNorth()};
@@ -148,7 +149,9 @@ export function initialiseSteepSlope({
       const areas = currentAreas();
       if (!areas.length) throw new Error('Load a GeoPDF or select Use this view as slope area first.');
       const requestedRoads = draw.getAll().features.filter(feature => feature.geometry?.type === 'LineString' && feature.geometry.coordinates.length >= 2);
-      const grid = await loadSlope({bounds, roads: requestedRoads, areas});
+      pendingRequest = new AbortController();
+      const grid = await loadSlope({bounds, roads: requestedRoads, areas, signal: pendingRequest.signal,
+        onProgress: message => { if (requestedRevision === revision && active) showStatus(statusElement, message); }});
       const result = grid.analyse({ bounds });
       result.outsideAnalysisArea = !areas.some(area => bounds.east > area.west && bounds.west < area.east
         && bounds.north > area.south && bounds.south < area.north);
@@ -168,12 +171,12 @@ export function initialiseSteepSlope({
     } catch (error) {
       if (requestedRevision !== revision || !active) return;
       analysis = null;
-      roadAnalysis = null;
-      roadSignature = "";
-      roadError = true;
+      // A view failure cannot invalidate completed measurements of unchanged roads.
+      roadError = !roadAnalysis;
       render();
       showStatus(statusElement, `Slope analysis unavailable: ${error.message}`, true);
     } finally {
+      pendingRequest = null;
       running = false;
     }
   };
@@ -181,6 +184,7 @@ export function initialiseSteepSlope({
   const scheduleAnalysis = (delay = 350) => {
     if (!active) return;
     revision += 1;
+    pendingRequest?.abort();
     const requestedRevision = revision;
     clearTimeout(debounceTimer);
     debounceTimer = setTimeout(() => runAnalysis(requestedRevision), delay);
@@ -195,6 +199,7 @@ export function initialiseSteepSlope({
       scheduleAnalysis(0);
     } else {
       revision += 1;
+      pendingRequest?.abort();
       clearTimeout(debounceTimer);
       buttonElement.disabled = false;
       render();
@@ -250,6 +255,7 @@ export function initialiseSteepSlope({
   });
   map.on("movestart", () => {
     revision += 1;
+    pendingRequest?.abort();
     clearTimeout(debounceTimer);
   });
   map.on("moveend", () => scheduleAnalysis());
@@ -259,7 +265,7 @@ function resultSummary(analysis, roadAnalysis) {
   if (analysis.sourceName) {
     const timing = analysis.timing ? `${analysis.timing.tileCount} tiles; ${analysis.timing.cacheHits} cached; preparation ${analysis.timing.seconds.toFixed(1)} s. ` : '';
     const overview = (analysis.outsideAnalysisArea ? 'View outside the selected slope area; no view tiles requested. ' : '')
-      + (analysis.outsideCoverage ? 'Outside trial coverage. Use View LiDAR test area. ' : '')
+      + (analysis.outsideCoverage ? 'No LINZ elevation tiles available in this view. ' : '')
       + `${analysis.sourceName} · 1 m reference grid · >35°. Outside the analysis area or LiDAR coverage is unknown, not flat. `;
     if (!roadAnalysis?.totalRoadLengthMetres) return overview + timing + 'Draw a road within available coverage to measure its steep sections.';
     return overview + timing + `Roads: ${formatLength(roadAnalysis.steepRoadLengthMetres)} above 35°. `

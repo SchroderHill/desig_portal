@@ -1,4 +1,4 @@
-"""Desktop-only on-demand slope trial. Reads public LINZ COG windows at native 1 m."""
+"""Desktop on-demand slope analysis. Reads public LINZ COG windows at native 1 m."""
 import base64
 import gzip
 import hashlib
@@ -9,7 +9,6 @@ from pathlib import Path
 import tempfile
 import threading
 import time
-from urllib.parse import urljoin
 
 import pyproj
 os.environ['PROJ_DATA'] = pyproj.datadir.get_data_dir()
@@ -21,15 +20,12 @@ from shapely.geometry import box, LineString, mapping
 from shapely.ops import transform, unary_union
 from rasterio.transform import from_origin
 from rasterio.windows import from_bounds
-import requests
+from linz_catalogue import load_catalogue
 
-ITEM_URL = 'https://nz-elevation.s3-ap-southeast-2.amazonaws.com/new-zealand/new-zealand/dem_1m/2193/BQ28.json'
-SOURCE_URL = urljoin(ITEM_URL, 'BQ28.tiff')
 TILE_SIZE = 512
 GRID_TOP = 10000000
-MAX_TILES = 24
-ALGORITHM = 'horn-1m-strict35-halo1-v1'
-TEST_BOUNDS = [173.82226724941518, -41.41296319860633, 173.84229746701732, -41.387016612079236]
+MAX_TILES = 1024
+ALGORITHM = 'horn-1m-strict35-halo1-national-v2'
 WGS_TO_NZ = pyproj.Transformer.from_crs(4326, 2193, always_xy=True)
 NZ_TO_WGS = pyproj.Transformer.from_crs(2193, 4326, always_xy=True)
 
@@ -76,7 +72,7 @@ def validate_bounds(bounds):
     except (KeyError, TypeError, ValueError):
         raise ValueError('A valid map bounding box is required')
     if not all(math.isfinite(v) for v in (west, south, east, north)) or not (166 <= west < east <= 180 and -48 <= south < north <= -33):
-        raise ValueError('This trial accepts New Zealand map bounds only')
+        raise ValueError('LINZ 1 m elevation analysis supports New Zealand map bounds (166–180°E, 48–33°S).')
     return west, south, east, north
 
 
@@ -109,7 +105,7 @@ def request_tiles(bounds, roads, areas=None):
                 if geometry.intersects(box(x, y-TILE_SIZE, x+TILE_SIZE, y)):
                     keys.add((c, r))
                     if len(keys) > MAX_TILES:
-                        raise ValueError('Zoom in or use fewer roads: maximum 24 native 1 m tiles per request')
+                        raise ValueError('This view and its roads need more than 1024 native 1 m tiles. Zoom in to load a smaller view.')
 
     add_geometry(view.intersection(scope))
     if not isinstance(roads, list) or len(roads) > 100:
@@ -143,22 +139,24 @@ class SlopeService:
         self.cache = Path(cache or Path(tempfile.gettempdir())/'design-portal-slope-cache')
         self.cache.mkdir(parents=True, exist_ok=True)
         self.source = None
+        self.sources = []
         self.lock = threading.Lock()
 
-    def initialise(self):
+    def initialise(self, progress=lambda message: None):
         if self.source is not None:
             return
-        response = requests.get(ITEM_URL, timeout=25)
-        response.raise_for_status()
-        item = response.json()
-        asset = item['assets']['visual']
-        if urljoin(ITEM_URL, asset['href']) != SOURCE_URL:
-            raise ValueError('Unexpected LINZ source asset; update the reviewed trial configuration')
-        fingerprint = hashlib.sha256((asset['file:checksum']+ALGORITHM).encode()).hexdigest()[:20]
-        self.source = dict(id='BQ28', name='LINZ BQ28 LiDAR slope (on demand)', fingerprint=fingerprint,
-            bounds=item['bbox'], itemUrl=ITEM_URL, sourceUrl=SOURCE_URL,
-            sourceChecksum=asset['file:checksum'], updated=asset.get('updated'),
+        self.sources = load_catalogue(self.cache, progress)
+        fingerprint = hashlib.sha256((json.dumps(self.sources, sort_keys=True)+ALGORITHM).encode()).hexdigest()[:20]
+        self.source = dict(id='linz-national-1m', name='LINZ LiDAR slope', fingerprint=fingerprint,
             attribution='Source: Toitu Te Whenua LINZ, New Zealand LiDAR 1m DEM, CC BY 4.0. Slope derived locally using Horn 3x3.')
+
+    def sources_for_tile(self, column, row):
+        left, top = column*TILE_SIZE, GRID_TOP-row*TILE_SIZE
+        # Include adjacent sheets for the Horn neighbourhood at sheet seams.
+        b = NZ_TO_WGS.transform_bounds(left-1, top-TILE_SIZE-1, left+TILE_SIZE+1, top+1)
+        return [source for source in self.sources if not (
+            b[0] >= source['bounds'][2] or b[2] <= source['bounds'][0]
+            or b[1] >= source['bounds'][3] or b[3] <= source['bounds'][1])]
 
     def tile_path(self, column, row):
         return self.cache / f'{self.source["fingerprint"]}-{column}-{row}.json.gz'
@@ -170,13 +168,17 @@ class SlopeService:
         start = time.perf_counter()
         left, top = column*TILE_SIZE, GRID_TOP-row*TILE_SIZE
         # Require native aligned 1 m cells. A halo avoids seams at our cache-tile edges.
-        with rasterio.Env(GDAL_DISABLE_READDIR_ON_OPEN='EMPTY_DIR', CPL_VSIL_CURL_ALLOWED_EXTENSIONS='.tiff',
+        dem = np.full((TILE_SIZE+2, TILE_SIZE+2), np.nan)
+        with rasterio.Env(GDAL_DISABLE_READDIR_ON_OPEN='EMPTY_DIR', CPL_VSIL_CURL_ALLOWED_EXTENSIONS='.tiff,.tif',
                 GDAL_HTTP_TIMEOUT=20, GDAL_HTTP_CONNECTTIMEOUT=5, GDAL_HTTP_MAX_RETRY=1, GDAL_HTTP_RETRY_DELAY=1):
-            with rasterio.open(SOURCE_URL) as ds:
-                if ds.crs.to_epsg() != 2193 or ds.res != (1, 1) or abs(ds.transform.c-round(ds.transform.c)) > 1e-6 or abs(ds.transform.f-round(ds.transform.f)) > 1e-6:
-                    raise ValueError('LINZ source is not an aligned NZTM 1 m DEM')
-                window = from_bounds(left-1, top-TILE_SIZE-1, left+TILE_SIZE+1, top+1, ds.transform).round_offsets().round_lengths()
-                dem = ds.read(1, window=window, boundless=True, masked=True).astype('float64').filled(np.nan)
+            for source in self.sources_for_tile(column, row):
+                with rasterio.open(source['url']) as ds:
+                    if ds.crs.to_epsg() != 2193 or ds.res != (1, 1) or ds.transform.b or ds.transform.d or abs(ds.transform.c-round(ds.transform.c)) > 1e-6 or abs(ds.transform.f-round(ds.transform.f)) > 1e-6:
+                        raise ValueError('LINZ source is not an aligned NZTM 1 m DEM')
+                    window = from_bounds(left-1, top-TILE_SIZE-1, left+TILE_SIZE+1, top+1, ds.transform).round_offsets().round_lengths()
+                    part = ds.read(1, window=window, boundless=True, masked=True).astype('float64').filled(np.nan)
+                    # Mosaic elevations BEFORE slope, preserving a real halo at sheet edges.
+                    dem = np.where(np.isfinite(dem), dem, part)
         classes, _ = classify_horn(dem)
         if classes.shape != (TILE_SIZE, TILE_SIZE):
             raise ValueError('Incomplete DEM window')
@@ -212,21 +214,20 @@ class SlopeService:
             temporary.replace(path)
         return dict(entry, url=f'/api/slope/tiles/{path.name}', bytes=path.stat().st_size)
 
-    def prepare(self, bounds, roads, areas=None):
+    def prepare(self, bounds, roads, areas=None, progress=lambda message: None, cancelled=lambda: False):
         areas = areas if areas is not None else [bounds]
         scope = analysis_geometry(areas)
         scope_id = json.dumps(areas, sort_keys=True, separators=(',', ':'))
         keys = request_tiles(bounds, roads, areas)
         start = time.perf_counter()
         with self.lock:
-            self.initialise()
-            sb = self.source['bounds']
+            self.initialise(progress)
             tiles = []
-            for c, r in keys:
-                left, top = c*TILE_SIZE, GRID_TOP-r*TILE_SIZE
-                b = NZ_TO_WGS.transform_bounds(left, top-TILE_SIZE, left+TILE_SIZE, top)
-                if b[0] > sb[2] or b[2] < sb[0] or b[1] > sb[3] or b[3] < sb[1]:
-                    continue
+            keys = [(c, r) for c, r in keys if self.sources_for_tile(c, r)]
+            for i, (c, r) in enumerate(keys):
+                if cancelled():
+                    raise ValueError('Slope request superseded')
+                progress(f'Preparing LiDAR slope: {i+1} / {len(keys)} tiles…')
                 tiles.append(self.scoped_tile(self.tile(c, r), scope, scope_id))
         return dict(tiles=tiles, source=self.source, tileSize=TILE_SIZE, gridTop=GRID_TOP,
             seconds=round(time.perf_counter()-start, 3), cacheHits=sum(t['cached'] for t in tiles),
