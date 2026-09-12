@@ -50,7 +50,10 @@ export function initialiseSteepSlope({
   };
   const updateAreaControls = () => {
     const count = getAnalysisAreas().length;
-    if (areaButton) areaButton.disabled = count > 0;
+    if (areaButton) {
+      areaButton.disabled = count > 0;
+      areaButton.hidden = count > 0;
+    }
     if (areaElement) areaElement.textContent = count
       ? `Slope area: ${count} loaded GeoPDF extent${count > 1 ? 's' : ''}.`
       : selectedArea ? 'Slope area fixed to your selected view. Pan without expanding it; use the button to replace it.'

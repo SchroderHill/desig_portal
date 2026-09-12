@@ -24573,7 +24573,7 @@ function vo({
     return z.length ? z : X ? [X] : [];
   }, T = () => {
     const z = a().length;
-    b && (b.disabled = z > 0), m && (m.textContent = z ? `Slope area: ${z} loaded GeoPDF extent${z > 1 ? "s" : ""}.` : X ? "Slope area fixed to your selected view. Pan without expanding it; use the button to replace it." : "Load a GeoPDF, or frame an area and select Use this view as slope area.");
+    b && (b.disabled = z > 0, b.hidden = z > 0), m && (m.textContent = z ? `Slope area: ${z} loaded GeoPDF extent${z > 1 ? "s" : ""}.` : X ? "Slope area fixed to your selected view. Pan without expanding it; use the button to replace it." : "Load a GeoPDF, or frame an area and select Use this view as slope area.");
   };
   T(), G?.addEventListener("click", async () => {
     try {
