@@ -16,6 +16,12 @@ npm run build
 
 Commit the regenerated `geopdf-dist/` files with the source changes.
 
+## Deployment
+
+Netlify builds the browser-only production bundle with `npm run build:site` and
+publishes `site-dist/`. See [NETLIFY-DEPLOYMENT.md](NETLIFY-DEPLOYMENT.md) for the
+production, preview, and national browser-slope release plan.
+
 ## Road terrain estimate
 
 Completed road lines are sampled against Mapbox Terrain-RGB at approximately
