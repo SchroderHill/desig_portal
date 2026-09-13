@@ -7,7 +7,7 @@ export function initialiseExport({button,map,draw,getMaps}) {
   const dialog=document.createElement('dialog');dialog.className='design-export';
   dialog.innerHTML=`<form method="dialog"><button class="export-close" aria-label="Close export">×</button></form><h2>Export design</h2>
     <label id="export-map-label">Map<select id="export-map"></select></label>
-    <p id="export-contents">Roads and pads are included. Maps under 5 MB attach automatically.</p>
+    <p id="export-contents">Roads and pads are included.</p>
     <form id="portal-submit-form"><h3>Send to Schroder Hill</h3>
     <label>Email *<input name="email" type="email" autocomplete="email" required maxlength="200"></label>
     <label>Company name <span>(optional)</span><input name="company" autocomplete="organization" maxlength="150"></label>
@@ -29,7 +29,7 @@ export function initialiseExport({button,map,draw,getMaps}) {
     maps=getMaps();select.replaceChildren();
     for(const overlay of maps)select.add(new Option(overlay.name,overlay.id));
     if(!maps.length)select.add(new Option('Geometry only — no imported map',''));
-    dialog.querySelector("#export-contents").textContent=maps.length?"Roads and pads are included. Maps under 5 MB attach automatically.":"Your drawn roads and pads are included.";
+    dialog.querySelector("#export-contents").textContent=maps.length?"Roads and pads are included.":"Your drawn roads and pads are included.";
     select.disabled=maps.length<2;
     dialog.querySelector("#export-map-label").hidden=maps.length<2;
     prepared=null;upload=null;reference=`DP-${crypto.randomUUID()}`;progress.textContent='';dialog.showModal();
