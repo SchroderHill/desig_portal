@@ -17,3 +17,12 @@ The export package contains NZTM GeoPackage layers, the annotated original PDF, 
 Verify the deployed blob service, >35 MB package upload/download, form acceptance, and notification configuration on a Netlify preview. A real email receipt/threading test requires an explicitly authorized test submission. Do not describe email delivery as verified from unit tests or a 200 response alone.
 
 Local evidence: 63 tests initially passed; GDAL opened generated GeoPackage as EPSG:2193; synthetic rotated georeference round-tripped; rendered PDF road passed through three control marks; second page preserved; browser local ZIP download succeeded. Detailed field-app compatibility, production delivery and DEM source comparisons are separate acceptance checks.
+
+## Preview verification — 13 September 2026
+
+- Commit 7f0784d deployed successfully on PR #2 after retrying a transient GitHub host-key error in Netlify's repository preparation.
+- Enabled Netlify form detection and configured a notification only for design-portal-submission to thomas@schroderhill.co.nz. The form's unique subject takes priority.
+- Hosted 37,791,858-byte synthetic ZIP uploaded in 19 chunks and downloaded with an identical SHA-256 checksum.
+- Two explicitly authorised synthetic submissions were accepted. The user confirmed both emails arrived separately and both download links work.
+- Browser preview generated and sent a package containing the annotated source PDF, GeoPackage with 3,156 slope polygons, coverage metadata and a 658 x 944 EPSG:2193 1 m DEM. DEM contained 443,074 valid elevation cells (362.177 to 592.138 m), with NoData outside the map footprint. GDAL opened the slope layer; rendered PDF shading stayed inside the source map panel.
+- 65 automated tests passed. Production is unchanged; preview review and merge remain separate release steps. Source-accuracy comparison and field-app compatibility remain acceptance checks, not claims established by these delivery tests.
