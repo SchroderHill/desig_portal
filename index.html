@@ -23,7 +23,7 @@
     .grade-label .mapboxgl-popup-content { background: rgba(188, 177, 177, 0.8); padding: 3px 6px; border-radius: 3px; font-size: 10px; text-align: center; min-width: auto; line-height: 1; transition: opacity 3.5s ease-in-out; }
     .area-label .mapboxgl-popup-content { background: rgba(255, 255, 255, 0.2); padding: 2px 4px; border-radius: 2px; font-size: 10px; text-align: center; min-width: auto; width: fit-content; line-height: 1; margin: 0; transition: opacity 0.5s ease-in-out; }
     .area-label .mapboxgl-popup-tip { display: none; }
-    #sidebar { position: absolute; top: 50px; left: 0; width: 150px; bottom: 0; background: #7d7b7b; padding: 10px; z-index: 1; }
+    #sidebar { position: absolute; top: 50px; left: 0; width: 150px; bottom: 0; background: #7d7b7b; padding: 10px; z-index: 1; overflow-y: auto; }
     #sidebar button { display: block; width: 100%; margin: 5px 0; padding: 8px; background: #4a4a4a; color: white; border: none; border-radius: 3px; cursor: pointer; }
     #sidebar button:hover { background: #666; }
     #sidebar button:disabled { cursor: wait; opacity: 0.65; }
@@ -52,6 +52,13 @@
     #road-analysis-status[data-state="error"] { color: #ffd1d1; }
     #sidebar #hillshade-toggle { width: auto; min-width: 64px; margin: 0 0 6px; padding: 3px 5px; font: 9px/1 Arial, sans-serif; background: #555; }
     #sidebar #hillshade-toggle[aria-pressed="true"] { background: #2f5e7d; }
+    #sidebar button[hidden] { display: none; }
+    .slope-rail #steep-slope-toggle { width: 44px; height: 44px; padding: 3px; color: #651414; font: bold 10px/1.2 Arial, sans-serif; }
+    .slope-rail #steep-slope-toggle[aria-pressed="true"] { background: #b31217; color: white; box-shadow: inset 0 0 0 1px #ffb3b3; }
+    #steep-slope-result { margin-top: 5px; padding: 5px; border-radius: 3px; background: rgba(255, 255, 255, 0.14); color: #fff; font: 9px/1.25 Arial, sans-serif; overflow-wrap: anywhere; }
+    #steep-slope-result::before { content: ""; display: inline-block; width: 10px; height: 10px; margin-right: 4px; vertical-align: -1px; background: rgba(215, 25, 28, 0.7); border: 1px solid #8b0000; }
+    #steep-slope-status { margin-top: 5px; color: #fff; font: 10px/1.25 Arial, sans-serif; overflow-wrap: anywhere; }
+    #steep-slope-status[data-state="error"] { color: #ffd1d1; }
     .mapbox-gl-draw_ctrl-draw-btn { border: none; cursor: pointer; display: block; width: 30px; height: 30px; background-color: #fff; padding: 2px; font-size: 20px; text-align: center; font-weight: bold; border-radius: 4px; }
     .mapbox-gl-draw_ctrl-draw-btn:hover { background-color: #1d1b1b; }
   </style>
@@ -65,13 +72,17 @@
     <button id="draw-line">Draw Road</button>
     <button id="draw-polygon">Draw Pad</button>
     <button id="export">Export</button>
+    <button id="slope-area" type="button">Use this view as slope area</button>
+    <div id="slope-area-status" role="status" style="font:11px/1.3 Arial,sans-serif;margin:4px 0 8px;color:white"></div>
     <div id="layers-panel">
       <h3>Layers</h3>
       <button id="hillshade-toggle" type="button" aria-pressed="false">Hillshade</button>
       <div id="layers-list"></div>
     </div>
+    <div id="steep-slope-result" role="status" aria-live="polite" hidden></div>
+    <div id="steep-slope-status" role="status" aria-live="polite" hidden></div>
     <div id="earthworks-legend" hidden>
-      <strong>Terrain estimate</strong>
+      <strong>Earthworks · Mapbox estimate</strong>
       <span class="earthworks-key"><i class="earthworks-swatch earthworks-swatch--cut"></i>Cut</span>
       <span class="earthworks-key"><i class="earthworks-swatch earthworks-swatch--fill"></i>Fill</span>
       <span class="earthworks-key"><i class="earthworks-swatch"></i>Balanced</span>
@@ -225,6 +236,22 @@
       ]
     });
     map.addControl(draw);
+    // A native Mapbox control keeps the slope toggle directly below the trash control.
+    map.addControl({
+      onAdd() {
+        this.container = document.createElement('div');
+        this.container.className = 'mapboxgl-ctrl mapboxgl-ctrl-group slope-rail';
+        const button = document.createElement('button');
+        button.id = 'steep-slope-toggle';
+        button.type = 'button';
+        button.textContent = 'Slope >35°';
+        button.title = 'Show terrain steeper than 35 degrees';
+        button.setAttribute('aria-pressed', 'false');
+        this.container.appendChild(button);
+        return this.container;
+      },
+      onRemove() { this.container.remove(); }
+    }, 'top-right');
     window.designPortal = { map, draw };
     window.designPortalGeoPdf = window.designPortal;
 
@@ -245,11 +272,11 @@
     // Buttons for draw modes
     document.getElementById('draw-line').addEventListener('click', () => {
       draw.changeMode('draw_line_string');
-      showToast("left click to start drawing.<br>Double click to stop drawing.");
+      showToast("Left click to draw · double click to finish.<br>Hold the scroll wheel and drag to pan.");
     });
     document.getElementById('draw-polygon').addEventListener('click', () => {
       draw.changeMode('draw_polygon');
-      showToast("left click to start drawing.<br>Double click to stop drawing.");
+      showToast("Left click to draw · double click to finish.<br>Hold the scroll wheel and drag to pan.");
     });
     document.getElementById('hillshade-toggle').addEventListener('click', event => {
       hillshadeEnabled = !hillshadeEnabled;
@@ -333,31 +360,6 @@ map.on('moveend', () => {
     .catch(err => console.error('WFS error:', err));
 });
 
-    // --- EXPORT / IMPORT GEOJSON (unchanged) ---
-    document.getElementById('export').addEventListener('click', () => {
-      const data = draw.getAll();
-      if (data.features.length === 0) {
-        alert('No features to export. Draw something first.');
-        return;
-      }
-
-      try {
-        const kmlContent = geojsonToKML(data.features);
-        const blob = new Blob([kmlContent], { type: 'application/vnd.google-earth.kml+xml' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'design_export.kml';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-      } catch (error) {
-        console.error('Export failed:', error);
-        alert('Export failed. Please try again.');
-      }
-    });
-
     // --- LIVE POPUP GRADIENT DURING DRAW (unchanged) ---
     let gradePopup = null;
     map.on('draw.render', () => {
@@ -378,10 +380,17 @@ map.on('moveend', () => {
       const sign = gradePercent >= 0 ? '+' : '–';
       const gradeText = `${sign}${Math.abs(gradePercent).toFixed(1)}%`;
       if (gradePopup) gradePopup.remove();
-      gradePopup = new mapboxgl.Popup({ closeButton: false, closeOnClick: false, className: 'grade-label', anchor: 'bottom' })
+      const popup = new mapboxgl.Popup({ closeButton: false, closeOnClick: false, className: 'grade-label', anchor: 'bottom' })
         .setLngLat([lng2, lat2]).setHTML(gradeText).addTo(map);
+      gradePopup = popup;
       setTimeout(() => {
-        if (gradePopup) { gradePopup.getElement().style.opacity = '0'; setTimeout(() => { if (gradePopup) gradePopup.remove(); }, 500); }
+        const popupElement = popup.getElement();
+        if (!popupElement) return;
+        popupElement.style.opacity = '0';
+        setTimeout(() => {
+          popup.remove();
+          if (gradePopup === popup) gradePopup = null;
+        }, 500);
       }, 2500);
     });
 
@@ -398,9 +407,18 @@ map.on('moveend', () => {
       const areaText = `${Math.round(turf.area(poly))}m²`;
       const centroid = turf.centroid(poly);
       if (areaPopup) areaPopup.remove();
-      areaPopup = new mapboxgl.Popup({ closeButton: false, closeOnClick: false, className: 'area-label', anchor: 'center' })
+      const popup = new mapboxgl.Popup({ closeButton: false, closeOnClick: false, className: 'area-label', anchor: 'center' })
         .setLngLat(centroid.geometry.coordinates).setHTML(areaText).addTo(map);
-      setTimeout(() => { if (areaPopup) { areaPopup.getElement().style.opacity = '0'; setTimeout(() => { if (areaPopup) areaPopup.remove(); }, 500); } }, 2500);
+      areaPopup = popup;
+      setTimeout(() => {
+        const popupElement = popup.getElement();
+        if (!popupElement) return;
+        popupElement.style.opacity = '0';
+        setTimeout(() => {
+          popup.remove();
+          if (areaPopup === popup) areaPopup = null;
+        }, 500);
+      }, 2500);
     });
 
     map.on('draw.create', e => {
@@ -525,6 +543,7 @@ map.on('draw.create', e => {
     displayName = `Pad ${padCount}`;
   }
   const layerId = `drawn-${f.geometry.type}-${Date.now()}`;
+  draw.setFeatureProperty(f.id, 'name', displayName);
   const toggleDiv = document.createElement('div');
   // Create the toggle div with a data attribute for the feature ID
   toggleDiv.setAttribute('data-feature-id', f.id);
@@ -535,6 +554,7 @@ map.on('draw.create', e => {
   document.getElementById(`${layerId}-toggle`).addEventListener('change', ev => {
     if (ev.target.checked) {
       draw.changeMode('simple_select', { featureIds: [f.id] });
+      map.fire('road.popup.open', { roadId: f.id });
     } else {
       draw.changeMode('simple_select', { featureIds: [] });
     }
@@ -585,55 +605,6 @@ map.on('draw.create', e => {
       });
     });
 
-    // Add this KML conversion utility function
-function geojsonToKML(features) {
-  const kmlStart = `<?xml version="1.0" encoding="UTF-8"?>
-<kml xmlns="http://www.opengis.net/kml/2.2">
-  <Document>
-    <name>Design Portal Export</name>
-    <Style id="lineStyle">
-      <LineStyle>
-        <color>ffD20C0C</color>
-        <width>3</width>
-      </LineStyle>
-    </Style>
-    <Style id="polyStyle">
-      <LineStyle>
-        <color>ffD20C0C</color>
-        <width>2</width>
-      </LineStyle>
-      <PolyStyle>
-        <color>40D20C0C</color>
-      </PolyStyle>
-    </Style>`;
-
-  const kmlEnd = `
-  </Document>
-</kml>`;
-
-  const placemarks = features.map((feature, index) => {
-    const isLine = feature.geometry.type === 'LineString';
-    const coords = isLine ? 
-      feature.geometry.coordinates : 
-      feature.geometry.coordinates[0];
-
-    return `
-    <Placemark>
-      <name>${isLine ? 'Line' : 'Polygon'} ${index + 1}</name>
-      <styleUrl>${isLine ? '#lineStyle' : '#polyStyle'}</styleUrl>
-      <${isLine ? 'LineString' : 'Polygon'}>
-        ${!isLine ? '<outerBoundaryIs><LinearRing>' : ''}
-        <coordinates>
-          ${coords.map(c => `${c[0]},${c[1]},0`).join(' ')}
-        </coordinates>
-        ${!isLine ? '</LinearRing></outerBoundaryIs>' : ''}
-      </${isLine ? 'LineString' : 'Polygon'}>
-    </Placemark>`;
-  }).join('\n');
-
-  return kmlStart + placemarks + kmlEnd;
-}
-
 // Update toast functionality to center the message
 function showToast(message, duration = 3000) {
   const toast = document.createElement('div');
@@ -652,6 +623,17 @@ function showToast(message, duration = 3000) {
   setTimeout(() => { toast.remove(); }, duration);
 }
   </script>
-  <script type="module" src="./geopdf-dist/geopdf-importer.js"></script>
+  <style>
+    .road-slope-popup .mapboxgl-popup-content { padding: 0; border-radius: 5px; box-shadow: 0 2px 8px #0004; }
+    .road-slope-popup .mapboxgl-popup-close-button { width: 25px; height: 25px; padding: 0; font: 18px/24px Arial, sans-serif; color: #666; }
+    .road-slope-popup .mapboxgl-popup-close-button:hover { background: #f2f2f2; color: #222; }
+    .road-slope-card { min-width: 138px; background: #fff; color: #303030; text-align: left; padding: 7px 10px 8px; border-left: 3px solid #c61b20; border-radius: 5px; }
+    .road-slope-card strong, .road-slope-card span, .road-slope-card small { display: block; }
+    .road-slope-card strong { padding-right: 18px; font: 600 11px/1.25 Arial, sans-serif; }
+    .road-slope-card .road-slope-metres { margin: 2px 0 1px; color: #a8171c; font: 700 18px/1.25 Arial, sans-serif; }
+    .road-slope-card span { color: #444; font: 10px/1.35 Arial, sans-serif; }
+    .road-slope-card small { margin-top: 5px; padding-top: 4px; border-top: 1px solid #e8e8e8; color: #777; font: 9px/1.2 Arial, sans-serif; }
+  </style>
+  <script type="module" src="./geopdf-dist/geopdf-importer.js?v=20260913-slope-rail"></script>
 </body>
 </html>

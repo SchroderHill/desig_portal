@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "name": "Terraces LiDAR slope",
+  "thresholdDegrees": 35,
+  "cellSizeMetres": 1,
+  "width": 2438,
+  "height": 4126,
+  "left": 1636028.0,
+  "top": 5391232.0,
+  "crs": "EPSG:2193",
+  "bounds": [
+    173.43252997370655,
+    -41.66698963889429,
+    173.46206368145275,
+    -41.62971305517404
+  ],
+  "classes": "classes.bin",
+  "polygons": "steep.geojson.gz",
+  "sourceName": "Clipped_sLOPE.tif",
+  "sourceSha256": "753954dba753a8aede7bee7c6520ac683d34efb7343421c914f3d814b834a88d",
+  "validCells": 6965619,
+  "steepCells": 1781394,
+  "classesSha256": "5f0994e8ef497bba2fd14676d066ea4abf0dc81b816549315f4d7d413f1d419b",
+  "attribution": "LINZ LiDAR-derived slope; local Terraces reference. 1 m grid, not survey-certified."
+}

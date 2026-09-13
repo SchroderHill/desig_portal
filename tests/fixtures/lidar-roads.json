@@ -1,0 +1,97 @@
+[
+  {
+    "id": "validation-1",
+    "geometry": {
+      "type": "LineString",
+      "coordinates": [
+        [
+          173.44072204235556,
+          -41.64809843000955
+        ],
+        [
+          173.455132141681,
+          -41.648042275807626
+        ]
+      ]
+    },
+    "expectedSteepMetres": 478.8476973372088,
+    "expectedUnknownMetres": 0.0,
+    "expectedTotalMetres": 1197.3442422610565
+  },
+  {
+    "id": "validation-2",
+    "geometry": {
+      "type": "LineString",
+      "coordinates": [
+        [
+          173.4479645357471,
+          -41.653474743556785
+        ],
+        [
+          173.44788966874268,
+          -41.642666408738954
+        ]
+      ]
+    },
+    "expectedSteepMetres": 626.9998727849485,
+    "expectedUnknownMetres": 0.0,
+    "expectedTotalMetres": 1201.8497561508618
+  },
+  {
+    "id": "validation-3",
+    "geometry": {
+      "type": "LineString",
+      "coordinates": [
+        [
+          173.44195982233336,
+          -41.65349798871931
+        ],
+        [
+          173.45389337158676,
+          -41.6426428587915
+        ]
+      ]
+    },
+    "expectedSteepMetres": 842.6428626179733,
+    "expectedUnknownMetres": 0.0,
+    "expectedTotalMetres": 1562.0867687599075
+  },
+  {
+    "id": "validation-4",
+    "geometry": {
+      "type": "LineString",
+      "coordinates": [
+        [
+          173.42631784079097,
+          -41.64905347486771
+        ],
+        [
+          173.444330759896,
+          -41.648985255747576
+        ]
+      ]
+    },
+    "expectedSteepMetres": 138.79829672783438,
+    "expectedUnknownMetres": 634.5922125611218,
+    "expectedTotalMetres": 1496.6816333757185
+  },
+  {
+    "id": "validation-5",
+    "geometry": {
+      "type": "LineString",
+      "coordinates": [
+        [
+          173.42031937542697,
+          -41.64997628495497
+        ],
+        [
+          173.42272113768956,
+          -41.64996747733249
+        ]
+      ]
+    },
+    "expectedSteepMetres": 0.0,
+    "expectedUnknownMetres": 199.55774088225468,
+    "expectedTotalMetres": 199.55774088225468
+  }
+]

@@ -1,5 +1,8 @@
 import { parseGeoPdf } from "./geopdf.js";
 import { initialiseRoadEarthworks } from "./road-earthworks-controller.js";
+import { initialiseSteepSlope } from "./steep-slope-controller.js";
+import { downloadDesignKml } from "./kml-export.js";
+import { enableMiddleDragPan } from "./middle-drag-pan.js";
 
 const portal = window.designPortal ?? window.designPortalGeoPdf;
 const map = portal?.map;
@@ -8,15 +11,51 @@ const addButton = document.querySelector("#add-geopdf");
 const fileInput = document.querySelector("#geopdf-file");
 const statusElement = document.querySelector("#geopdf-status");
 const layersList = document.querySelector("#layers-list");
+const exportButton = document.querySelector("#export");
 const overlays = new Map();
 
 if (map && draw) {
+  enableMiddleDragPan({ map, draw });
+  initialiseKmlExport();
   initialiseRoadEarthworks({
     map,
     draw,
     accessToken: window.mapboxgl?.accessToken,
     legendElement: document.querySelector("#earthworks-legend"),
     statusElement: document.querySelector("#road-analysis-status"),
+  });
+  initialiseSteepSlope({
+    map,
+    draw,
+    accessToken: window.mapboxgl?.accessToken,
+    buttonElement: document.querySelector("#steep-slope-toggle"),
+    coverageButton: document.querySelector('#lidar-coverage'),
+    areaButton: document.querySelector('#slope-area'),
+    areaElement: document.querySelector('#slope-area-status'),
+    getAnalysisAreas: () => [...overlays.values()].map(overlay => overlay.boundsLngLat),
+    resultElement: document.querySelector("#steep-slope-result"),
+    PopupClass: window.mapboxgl?.Popup,
+    statusElement: document.querySelector("#steep-slope-status"),
+    thresholdDegrees: 35,
+    corridorMetres: 75,
+  });
+}
+
+function initialiseKmlExport() {
+  if (!exportButton) return;
+  exportButton.addEventListener("click", () => {
+    const features = draw.getAll().features;
+    if (!features.length) {
+      window.alert("No features to export. Draw something first.");
+      return;
+    }
+
+    try {
+      downloadDesignKml(features);
+    } catch (error) {
+      console.error("Export failed:", error);
+      window.alert("Export failed. Please try again.");
+    }
   });
 }
 
@@ -53,6 +92,7 @@ async function handleFileSelection(event) {
     await waitForMapStyle();
     addOverlayToMap(overlay);
     addOverlayControls(overlay);
+    map.fire('slope.area.change');
     zoomToOverlay(overlay);
 
     const pageNote = overlay.pageCount > 1 ? " Showing page 1." : "";
@@ -204,6 +244,7 @@ function removeOverlay(overlay) {
   if (map.getLayer(layer)) map.removeLayer(layer);
   if (map.getSource(source)) map.removeSource(source);
   overlays.delete(overlay.id);
+  map.fire('slope.area.change');
   document.querySelector(`[data-geopdf-id="${overlay.id}"]`)?.remove();
   setStatus(`Removed ${overlay.name}.`, "success");
 }

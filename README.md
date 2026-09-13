@@ -29,3 +29,13 @@ Completed road lines are sampled against Mapbox Terrain-RGB at approximately
 fill, and grey sections are within 0.5 m of the straight formation between
 drawn vertices. This display is a DEM-based indication only; it does not alter
 the drawn/exported road geometry or calculate earthwork volumes.
+
+## Terrain steeper than 35 degrees
+
+Use **Slope >35°** after drawing a road to analyse a 75 m corridor around the
+road against Mapbox Terrain-RGB. Terrain cells steeper than 35 degrees are shown
+as translucent red polygons. The sidebar reports the approximate length and
+percentage of road crossing those cells, plus the red terrain area. The grid is
+normally about 20 m and automatically becomes coarser for very long roads to
+keep the browser calculation bounded. Treat the result as a DEM-based costing
+screen rather than a survey or final earthworks design.

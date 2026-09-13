@@ -1,0 +1,44 @@
+[
+  {
+    "place": "Rams Head",
+    "tiles": 1,
+    "validCells": 9239,
+    "steepCells": 3151,
+    "seconds": 1.419,
+    "sheets": [
+      "BR28"
+    ],
+    "referenceCommonCells": 9239,
+    "referenceClassDifferences": 1
+  },
+  {
+    "place": "Terraces",
+    "tiles": 1,
+    "validCells": 9264,
+    "steepCells": 5888,
+    "seconds": 0.878,
+    "sheets": [
+      "BR27"
+    ]
+  },
+  {
+    "place": "Kenningtons",
+    "tiles": 1,
+    "validCells": 9277,
+    "steepCells": 3812,
+    "seconds": 0.658,
+    "sheets": [
+      "BQ28"
+    ]
+  },
+  {
+    "place": "Auckland",
+    "tiles": 2,
+    "validCells": 9891,
+    "steepCells": 28,
+    "seconds": 1.225,
+    "sheets": [
+      "BA32"
+    ]
+  }
+]
