@@ -16,7 +16,7 @@ export function areaRings(areas) {
   if (!areas?.length) throw Error('Import a GeoPDF to analyse its map area.');
   return areas.map(a => {
     if (![a.west,a.south,a.east,a.north].every(Number.isFinite) || !(166<=a.west && a.west<a.east && a.east<=180 && -48<=a.south && a.south<a.north && a.north<=-33)) throw Error('This map is outside New Zealand LINZ coverage.');
-    return [[a.west,a.north],[a.east,a.north],[a.east,a.south],[a.west,a.south]].map(project);
+    return (a.coordinates ?? [[a.west,a.north],[a.east,a.north],[a.east,a.south],[a.west,a.south]]).map(project);
   });
 }
 export function* tilesForAreas(rings) {

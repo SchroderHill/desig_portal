@@ -1,7 +1,7 @@
 import { parseGeoPdf } from "./geopdf.js";
 import { initialiseRoadEarthworks } from "./road-earthworks-controller.js";
 import { initialiseSteepSlope } from "./steep-slope-controller.js";
-import { downloadDesignKml } from "./kml-export.js";
+import { initialiseExport } from './export/export-controller.js';
 import { enableMiddleDragPan } from "./middle-drag-pan.js";
 
 const portal = window.designPortal ?? window.designPortalGeoPdf;
@@ -16,7 +16,6 @@ const overlays = new Map();
 
 if (map && draw) {
   enableMiddleDragPan({ map, draw });
-  initialiseKmlExport();
   initialiseRoadEarthworks({
     map,
     draw,
@@ -24,7 +23,7 @@ if (map && draw) {
     legendElement: document.querySelector("#earthworks-legend"),
     statusElement: document.querySelector("#road-analysis-status"),
   });
-  initialiseSteepSlope({
+  const slope = initialiseSteepSlope({
     map,
     draw,
     accessToken: window.mapboxgl?.accessToken,
@@ -32,31 +31,14 @@ if (map && draw) {
     coverageButton: document.querySelector('#lidar-coverage'),
     areaButton: document.querySelector('#slope-area'),
     areaElement: document.querySelector('#slope-area-status'),
-    getAnalysisAreas: () => [...overlays.values()].map(overlay => overlay.boundsLngLat),
+    getAnalysisAreas: () => [...overlays.values()].map(overlay => ({...overlay.boundsLngLat, coordinates:overlay.georeference.viewportCoordinates})),
     resultElement: document.querySelector("#steep-slope-result"),
     PopupClass: window.mapboxgl?.Popup,
     statusElement: document.querySelector("#steep-slope-status"),
     thresholdDegrees: 35,
     corridorMetres: 75,
   });
-}
-
-function initialiseKmlExport() {
-  if (!exportButton) return;
-  exportButton.addEventListener("click", () => {
-    const features = draw.getAll().features;
-    if (!features.length) {
-      window.alert("No features to export. Draw something first.");
-      return;
-    }
-
-    try {
-      downloadDesignKml(features);
-    } catch (error) {
-      console.error("Export failed:", error);
-      window.alert("Export failed. Please try again.");
-    }
-  });
+  initialiseExport({button:exportButton,map,draw,getMaps:()=>[...overlays.values()],slope});
 }
 
 if (!map || !addButton || !fileInput || !statusElement || !layersList) {

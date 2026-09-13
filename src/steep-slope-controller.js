@@ -41,6 +41,7 @@ export function initialiseSteepSlope({
   let displayedSource, displayedFeatures;
   let selectedArea = null;
   let pendingRequest = null;
+  let exportGrid = null;
   const renderRaster = createSlopeRasterRenderer(map);
   const viewBounds = () => {
     const view = map.getBounds();
@@ -168,6 +169,7 @@ export function initialiseSteepSlope({
         && bounds.north > area.south && bounds.south < area.north);
       if (requestedRevision !== revision || !active) return;
       analysis = result;
+      exportGrid = grid;
       render();
       const roads = drawingOrEditing ? [] : draw.getAll().features.filter((feature) => feature.geometry?.type === "LineString" && feature.geometry.coordinates.length >= 2);
       const signature = JSON.stringify({areas, roads: roads.map(({ id, geometry }) => ({ id, geometry }))});
@@ -237,6 +239,7 @@ export function initialiseSteepSlope({
     scheduleAnalysis(0);
   };
   const areaChanged = () => {
+    exportGrid = null;
     revision += 1;
     analysis = null;
     roadAnalysis = null;
@@ -270,6 +273,7 @@ export function initialiseSteepSlope({
     clearTimeout(debounceTimer);
   });
   map.on("moveend", () => scheduleAnalysis());
+  return {snapshot:()=> exportGrid?.complete ? [...exportGrid.tiles].map(([id,tile])=>({id,metadata:{...tile.metadata},bytes:tile.bytes.slice()})) : null};
 }
 
 function resultSummary(analysis, roadAnalysis) {
