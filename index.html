@@ -53,7 +53,7 @@
     #sidebar #hillshade-toggle { width: auto; min-width: 64px; margin: 0 0 6px; padding: 3px 5px; font: 9px/1 Arial, sans-serif; background: #555; }
     #sidebar #hillshade-toggle[aria-pressed="true"] { background: #2f5e7d; }
     #sidebar button[hidden] { display: none; }
-    .slope-rail #steep-slope-toggle { width: 44px; height: 44px; padding: 3px; color: #651414; font: bold 10px/1.2 Arial, sans-serif; }
+    .slope-rail #steep-slope-toggle { width: 30px; height: 30px; padding: 2px; color: #651414; font: bold 8px/1 Arial, sans-serif; }
     .slope-rail #steep-slope-toggle[aria-pressed="true"] { background: #b31217; color: white; box-shadow: inset 0 0 0 1px #ffb3b3; }
     #steep-slope-result { margin-top: 5px; padding: 5px; border-radius: 3px; background: rgba(255, 255, 255, 0.14); color: #fff; font: 9px/1.25 Arial, sans-serif; overflow-wrap: anywhere; }
     #steep-slope-result::before { content: ""; display: inline-block; width: 10px; height: 10px; margin-right: 4px; vertical-align: -1px; background: rgba(215, 25, 28, 0.7); border: 1px solid #8b0000; }
@@ -61,7 +61,7 @@
     #steep-slope-status[data-state="error"] { color: #ffd1d1; }
     .mapbox-gl-draw_ctrl-draw-btn { border: none; cursor: pointer; display: block; width: 30px; height: 30px; background-color: #fff; padding: 2px; font-size: 20px; text-align: center; font-weight: bold; border-radius: 4px; }
     .mapbox-gl-draw_ctrl-draw-btn:hover { background-color: #1d1b1b; }
-    .road-grade-chip { pointer-events: none; }
+    .road-grade-chip, .road-grade-chip * { pointer-events: none !important; }
     .road-grade-chip .mapboxgl-popup-content { background: rgba(24,38,30,.88); color:#e8f8c8; padding:3px 5px; border-radius:3px; font:600 11px/1.2 system-ui,sans-serif; box-shadow:0 1px 3px #0003; white-space:nowrap; }
     .road-grade-chip .mapboxgl-popup-tip { display:none; }
     .road-grade-live .mapboxgl-popup-content { background:rgba(44,72,30,.94); color:white; }
@@ -70,7 +70,7 @@
 <body>
   <div id="header">Design Portal</div>
   <div id="sidebar">
-    <button id="add-geopdf" type="button">Add GeoPDF</button>
+    <button id="add-geopdf" type="button">Add Map</button>
     <input id="geopdf-file" type="file" accept=".pdf,application/pdf" hidden>
     <div id="geopdf-status" role="status" aria-live="polite"></div>
     <button id="draw-line">Draw Road</button>
@@ -86,7 +86,7 @@
     <div id="steep-slope-result" role="status" aria-live="polite" hidden></div>
     <div id="steep-slope-status" role="status" aria-live="polite" hidden></div>
     <div id="earthworks-legend" hidden>
-      <strong>Earthworks · Mapbox estimate</strong>
+      <strong>Earthworks</strong>
       <span class="earthworks-key"><i class="earthworks-swatch earthworks-swatch--cut"></i>Cut</span>
       <span class="earthworks-key"><i class="earthworks-swatch earthworks-swatch--fill"></i>Fill</span>
       <span class="earthworks-key"><i class="earthworks-swatch"></i>Balanced</span>
@@ -410,6 +410,33 @@ map.on('moveend', () => {
 
     // --- VERTEX & GRADE‑LABELS UPDATE ---
     const roadLabels = new Map();
+    let roadLabelPointer = null;
+    let roadLabelFrame = null;
+    function refreshRoadLabelVisibility() {
+      roadLabelFrame = null;
+      const editing = draw.getMode() === 'draw_line_string' || draw.getSelectedIds().length > 0;
+      for (const popup of roadLabels.values()) {
+        const element = popup.getElement();
+        const bounds = element.getBoundingClientRect();
+        const near = editing && roadLabelPointer &&
+          roadLabelPointer.x >= bounds.left - 28 && roadLabelPointer.x <= bounds.right + 28 &&
+          roadLabelPointer.y >= bounds.top - 28 && roadLabelPointer.y <= bounds.bottom + 28;
+        element.style.visibility = near ? 'hidden' : '';
+      }
+    }
+    function scheduleRoadLabelVisibility() {
+      if (roadLabelFrame === null) roadLabelFrame = requestAnimationFrame(refreshRoadLabelVisibility);
+    }
+    map.getCanvasContainer().addEventListener('pointermove', event => {
+      roadLabelPointer = {x:event.clientX,y:event.clientY};
+      scheduleRoadLabelVisibility();
+    });
+    map.getCanvasContainer().addEventListener('pointerleave', () => {
+      roadLabelPointer = null;
+      scheduleRoadLabelVisibility();
+    });
+    map.on('move', scheduleRoadLabelVisibility);
+    map.on('draw.selectionchange', scheduleRoadLabelVisibility);
     function updateGradeLabels() {
       const wanted = new Set();
       const drawing = draw.getMode() === 'draw_line_string';
@@ -420,7 +447,7 @@ map.on('moveend', () => {
         let popup = roadLabels.get(key);
         if (!popup) {
           popup = new mapboxgl.Popup({closeButton:false,closeOnClick:false,
-            className:'road-grade-chip',anchor:total?'top':'bottom',offset:total?14:10})
+            className:'road-grade-chip',anchor:total?'top':'bottom',offset:total?24:24})
             .setLngLat(coordinate).setText(text).addTo(map);
           roadLabels.set(key,popup);
         }
@@ -448,6 +475,7 @@ map.on('moveend', () => {
         }
       });
       for(const [key,popup] of roadLabels)if(!wanted.has(key)){popup.remove();roadLabels.delete(key);}
+      scheduleRoadLabelVisibility();
     }
     map.on('moveend',updateGradeLabels);
     map.on('idle',updateGradeLabels);
@@ -630,7 +658,7 @@ function showToast(message, duration = 3000) {
     .road-slope-card .road-slope-metres { margin: 2px 0 1px; color: #a8171c; font: 700 18px/1.25 Arial, sans-serif; }
     .road-slope-card span { color: #444; font: 10px/1.35 Arial, sans-serif; }
     .road-slope-card small { margin-top: 5px; padding-top: 4px; border-top: 1px solid #e8e8e8; color: #777; font: 9px/1.2 Arial, sans-serif; }
-    .road-grade-chip { pointer-events: none; }
+    .road-grade-chip, .road-grade-chip * { pointer-events: none !important; }
     .road-grade-chip .mapboxgl-popup-content { background: rgba(24,38,30,.88); color:#e8f8c8; padding:3px 5px; border-radius:3px; font:600 11px/1.2 system-ui,sans-serif; box-shadow:0 1px 3px #0003; white-space:nowrap; }
     .road-grade-chip .mapboxgl-popup-tip { display:none; }
     .road-grade-live .mapboxgl-popup-content { background:rgba(44,72,30,.94); color:white; }
