@@ -1,6 +1,6 @@
 import {fromUrl} from 'geotiff';
 import {SIZE, TOP, corners, classify} from './browser-slope-core.js';
-export async function readTile(sources,column,row,signal) {
+export async function readElevationTile(sources,column,row,signal) {
   const left=column*SIZE,top=TOP-row*SIZE, width=SIZE+2;
   const dem=new Float64Array(width*width).fill(NaN);
   const points=corners(left-1,top+1,SIZE+2),xs=points.map(p=>p[0]),ys=points.map(p=>p[1]);
@@ -16,5 +16,6 @@ export async function readTile(sources,column,row,signal) {
     const nodata=image.getGDALNoData();
     for(let i=0;i<dem.length;i++) if(!Number.isFinite(dem[i]) && Number.isFinite(data[i]) && data[i]!==nodata) dem[i]=data[i];
   }
-  return classify(dem);
+  return dem;
 }
+export async function readTile(sources,column,row,signal) {return classify(await readElevationTile(sources,column,row,signal));}

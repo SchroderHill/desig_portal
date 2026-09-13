@@ -28,6 +28,9 @@ export async function parseGeoPdf(file) {
   }
 
   return {
+    originalFile: file,
+    georeference,
+    pdfCorners: rendered.pdfCorners,
     imageDataUrl: rendered.imageDataUrl,
     width: rendered.width,
     height: rendered.height,

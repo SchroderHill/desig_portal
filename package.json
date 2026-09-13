@@ -9,10 +9,14 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@netlify/blobs": "^11.0.3",
+    "fflate": "^0.8.3",
     "geotiff": "^3.0.5",
     "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^6.1.200",
-    "proj4": "^2.20.8"
+    "polygon-clipping": "^0.15.7",
+    "proj4": "^2.20.8",
+    "sql.js": "^1.14.2"
   },
   "devDependencies": {
     "vite": "^6.3.5",

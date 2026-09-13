@@ -1,6 +1,6 @@
 import { i as eA } from "./pako.esm-DLNJzcmj.js";
 import { B as rA } from "./basedecoder-Bgma6Vmx.js";
-import { a as wA, L as gA } from "./browser-slope.worker-cZXnUpXO.js";
+import { a as wA, L as gA } from "./browser-slope.worker-BMvqWcOM.js";
 function hA(v) {
   return v && v.__esModule && Object.prototype.hasOwnProperty.call(v, "default") ? v.default : v;
 }

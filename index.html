@@ -61,6 +61,10 @@
     #steep-slope-status[data-state="error"] { color: #ffd1d1; }
     .mapbox-gl-draw_ctrl-draw-btn { border: none; cursor: pointer; display: block; width: 30px; height: 30px; background-color: #fff; padding: 2px; font-size: 20px; text-align: center; font-weight: bold; border-radius: 4px; }
     .mapbox-gl-draw_ctrl-draw-btn:hover { background-color: #1d1b1b; }
+    .road-grade-chip { pointer-events: none; }
+    .road-grade-chip .mapboxgl-popup-content { background: rgba(24,38,30,.88); color:#e8f8c8; padding:3px 5px; border-radius:3px; font:600 11px/1.2 system-ui,sans-serif; box-shadow:0 1px 3px #0003; white-space:nowrap; }
+    .road-grade-chip .mapboxgl-popup-tip { display:none; }
+    .road-grade-live .mapboxgl-popup-content { background:rgba(44,72,30,.94); color:white; }
   </style>
 </head>
 <body>
@@ -230,7 +234,7 @@
       displayControlsDefault: false,
       controls: { trash: true },
       styles: [
-        { "id": "gl-draw-line", "type": "line", "filter": ["all", ["==", "$type", "LineString"], ["!=", "mode", "static"]], "layout": { "line-cap": "round", "line-join": "round" }, "paint": { "line-color": "#D20C0C", "line-dasharray": [0.2, 2], "line-width": 4 }},
+        { "id": "gl-draw-line", "type": "line", "filter": ["all", ["==", "$type", "LineString"], ["!=", "mode", "static"]], "layout": { "line-cap": "round", "line-join": "round" }, "paint": { "line-color": "#b9ee63", "line-width": 3 }},
         { "id": "gl-draw-polygon-fill", "type": "fill", "filter": ["all", ["==", "$type", "Polygon"], ["!=", "mode", "static"]], "paint": { "fill-color": "#D20C0C", "fill-outline-color": "#D20C0C", "fill-opacity": 0.1 }},
         { "id": "gl-draw-polygon-stroke-active", "type": "line", "filter": ["all", ["==", "$type", "Polygon"], ["!=", "mode", "static"]], "layout": { "line-cap": "round", "line-join": "round" }, "paint": { "line-color": "#D20C0C", "line-dasharray": [0.2, 2], "line-width": 4 }}
       ]
@@ -302,7 +306,7 @@
         map.addLayer({ id: vertexHitboxLayerId, type: 'circle', source: vertexLayerId, paint: { 'circle-radius': 14, 'circle-color': '#ffffff', 'circle-opacity': 0.01 } });
       }
       if (!map.getLayer(vertexLayerId)) {
-        map.addLayer({ id: vertexLayerId, type: 'circle', source: vertexLayerId, paint: { 'circle-radius': 6, 'circle-color': '#ffffff', 'circle-stroke-color': '#D20C0C', 'circle-stroke-width': 2 } });
+        map.addLayer({ id: vertexLayerId, type: 'circle', source: vertexLayerId, paint: { 'circle-radius': 4.5, 'circle-color': '#b9ee63', 'circle-stroke-color': '#263e27', 'circle-stroke-width': 1.5 } });
       }
       // Grade‑label layer
       if (!map.getSource('grade-labels')) {
@@ -360,40 +364,6 @@ map.on('moveend', () => {
     .catch(err => console.error('WFS error:', err));
 });
 
-    // --- LIVE POPUP GRADIENT DURING DRAW (unchanged) ---
-    let gradePopup = null;
-    map.on('draw.render', () => {
-      if (draw.getMode() !== 'draw_line_string') return;
-      const features = draw.getAll().features;
-      const active = features[features.length - 1];
-      if (!active || active.geometry.type !== 'LineString') return;
-      const coords = active.geometry.coordinates;
-      if (coords.length < 2) return;
-      const [lng2, lat2] = coords[coords.length - 1];
-      const [lng1, lat1] = coords[coords.length - 2];
-      const elev1 = map.queryTerrainElevation([lng1, lat1]);
-      const elev2 = map.queryTerrainElevation([lng2, lat2]);
-      if (elev1 === null || elev2 === null) return;
-      const distM = turf.distance(turf.point([lng1, lat1]), turf.point([lng2, lat2]), { units: 'kilometers' }) * 1000;
-      if (!distM) return;
-      const gradePercent = ((elev2 - elev1) / distM) * 100;
-      const sign = gradePercent >= 0 ? '+' : '–';
-      const gradeText = `${sign}${Math.abs(gradePercent).toFixed(1)}%`;
-      if (gradePopup) gradePopup.remove();
-      const popup = new mapboxgl.Popup({ closeButton: false, closeOnClick: false, className: 'grade-label', anchor: 'bottom' })
-        .setLngLat([lng2, lat2]).setHTML(gradeText).addTo(map);
-      gradePopup = popup;
-      setTimeout(() => {
-        const popupElement = popup.getElement();
-        if (!popupElement) return;
-        popupElement.style.opacity = '0';
-        setTimeout(() => {
-          popup.remove();
-          if (gradePopup === popup) gradePopup = null;
-        }, 500);
-      }, 2500);
-    });
-
     // --- AREA POPUPS (unchanged) ---
     let areaPopup = null;
     map.on('draw.render', () => {
@@ -439,24 +409,49 @@ map.on('moveend', () => {
     });
 
     // --- VERTEX & GRADE‑LABELS UPDATE ---
+    const roadLabels = new Map();
     function updateGradeLabels() {
-      if (!map.getSource('grade-labels')) return;
-      const features = draw.getAll().features;
-      const labelFeatures = [];
-      features.forEach(f => {
-        if (f.geometry.type !== 'LineString') return;
-        const coords = f.geometry.coordinates;
-        for (let i = 0; i < coords.length - 1; i++) {
-          const [lng1, lat1] = coords[i]; const [lng2, lat2] = coords[i + 1];
-          const elev1 = map.queryTerrainElevation([lng1, lat1]); const elev2 = map.queryTerrainElevation([lng2, lat2]); if (elev1 === null || elev2 === null) continue;
-          const distM = turf.distance(turf.point([lng1, lat1]), turf.point([lng2, lat2]), { units: 'kilometers' }) * 1000; if (!distM) continue;
-          const gradePercent = ((elev2 - elev1) / distM) * 100; const sign = gradePercent >= 0 ? '+' : '–'; const gradeText = `${sign}${Math.abs(gradePercent).toFixed(1)}%`;
-          const midpoint = [(lng1 + lng2) / 2, (lat1 + lat2) / 2];
-          labelFeatures.push({ type: 'Feature', geometry: { type: 'Point', coordinates: midpoint }, properties: { grade: gradeText } });
+      const wanted = new Set();
+      const drawing = draw.getMode() === 'draw_line_string';
+      const roads = draw.getAll().features.filter(f => f.geometry.type === 'LineString');
+      const selected = new Set(draw.getSelectedIds());
+      const label = (key, coordinate, text, live = false, total = false) => {
+        wanted.add(key);
+        let popup = roadLabels.get(key);
+        if (!popup) {
+          popup = new mapboxgl.Popup({closeButton:false,closeOnClick:false,
+            className:'road-grade-chip',anchor:total?'top':'bottom',offset:total?14:10})
+            .setLngLat(coordinate).setText(text).addTo(map);
+          roadLabels.set(key,popup);
+        }
+        popup.setLngLat(coordinate).setText(text);
+        popup.getElement().classList.toggle('road-grade-live',live);
+      };
+      roads.forEach((f, roadIndex) => {
+        const coords=f.geometry.coordinates;
+        let total=0;
+        for(let i=1;i<coords.length;i++) {
+          const a=coords[i-1],b=coords[i];
+          const metres=turf.distance(turf.point(a),turf.point(b),{units:'kilometers'})*1000;
+          if(metres<0.01)continue;
+          total+=metres;
+          const z1=map.queryTerrainElevation(a,{exaggerated:false});
+          const z2=map.queryTerrainElevation(b,{exaggerated:false});
+          const grade=Number.isFinite(z1)&&Number.isFinite(z2)?(z2-z1)/metres*100:null;
+          const text=grade===null?'—':`${grade<0?'−':'+'}${Math.abs(grade).toFixed(1)}%`;
+          label(`${f.id}:${i}`,[(a[0]+b[0])/2,(a[1]+b[1])/2],text,
+            drawing && roadIndex===roads.length-1 && i===coords.length-1);
+        }
+        if(coords.length>1 && (!drawing || selected.has(f.id))) {
+          label(`${f.id}:total`,coords[Math.floor((coords.length-1)/2)],
+            `${f.properties.name||'Road'} · ${total.toFixed(1)} m`,false,true);
         }
       });
-      map.getSource('grade-labels').setData({ type: 'FeatureCollection', features: labelFeatures });
+      for(const [key,popup] of roadLabels)if(!wanted.has(key)){popup.remove();roadLabels.delete(key);}
     }
+    map.on('moveend',updateGradeLabels);
+    map.on('idle',updateGradeLabels);
+    map.on('draw.modechange',updateGradeLabels);
 
     function updateVertices() {
       if (!map.getSource('vertices')) return;
@@ -487,13 +482,15 @@ map.on('moveend', () => {
 
     function finishVertexDrag() {
       if (!draggedVertex) return;
+      const changedFeature = draggedVertex.feature;
       draggedVertex = null;
+      map.fire('draw.update', {features:[changedFeature], action:'change_coordinates'});
       if (vertexDragPanWasEnabled) map.dragPan.enable();
       map.getCanvas().style.cursor = '';
     }
 
     map.on('mousedown', vertexHitboxLayerId, e => {
-      if (!e.features.length) return;
+      if (!e.features.length || e.originalEvent.button !== 0 || draw.getMode().startsWith('draw_')) return;
       e.preventDefault();
       e.originalEvent.stopPropagation();
       vertexDragPanWasEnabled = map.dragPan.isEnabled();
@@ -633,6 +630,10 @@ function showToast(message, duration = 3000) {
     .road-slope-card .road-slope-metres { margin: 2px 0 1px; color: #a8171c; font: 700 18px/1.25 Arial, sans-serif; }
     .road-slope-card span { color: #444; font: 10px/1.35 Arial, sans-serif; }
     .road-slope-card small { margin-top: 5px; padding-top: 4px; border-top: 1px solid #e8e8e8; color: #777; font: 9px/1.2 Arial, sans-serif; }
+    .road-grade-chip { pointer-events: none; }
+    .road-grade-chip .mapboxgl-popup-content { background: rgba(24,38,30,.88); color:#e8f8c8; padding:3px 5px; border-radius:3px; font:600 11px/1.2 system-ui,sans-serif; box-shadow:0 1px 3px #0003; white-space:nowrap; }
+    .road-grade-chip .mapboxgl-popup-tip { display:none; }
+    .road-grade-live .mapboxgl-popup-content { background:rgba(44,72,30,.94); color:white; }
   </style>
   <script type="module" src="./geopdf-dist/geopdf-importer.js?v=20260913-slope-rail"></script>
 </body>

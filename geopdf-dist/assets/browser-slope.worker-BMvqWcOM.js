@@ -4717,7 +4717,7 @@ function H0(e) {
   if (!e?.length) throw Error("Import a GeoPDF to analyse its map area.");
   return e.map((a) => {
     if (![a.west, a.south, a.east, a.north].every(Number.isFinite) || !(166 <= a.west && a.west < a.east && a.east <= 180 && -48 <= a.south && a.south < a.north && a.north <= -33)) throw Error("This map is outside New Zealand LINZ coverage.");
-    return [[a.west, a.north], [a.east, a.north], [a.east, a.south], [a.west, a.south]].map(F0);
+    return (a.coordinates ?? [[a.west, a.north], [a.east, a.north], [a.east, a.south], [a.west, a.south]]).map(F0);
   });
 }
 function* $0(e) {
@@ -5173,9 +5173,9 @@ const $ = {
   CIELab: 8
 }, Co = {
   Unspecified: 0
-}, B3 = {
-  AddCompression: 1
 }, C3 = {
+  AddCompression: 1
+}, k3 = {
   None: 0,
   Deflate: 1,
   Zstandard: 2
@@ -5362,7 +5362,7 @@ const Ro = [
   // LERC
   {
     cases: 34887,
-    importFn: () => import("./lerc-BO8BJIOW.js").then(async (e) => (await e.zstd.init(), e)).then((e) => e.default),
+    importFn: () => import("./lerc-BYNEs1cd.js").then(async (e) => (await e.zstd.init(), e)).then((e) => e.default),
     /**
      * @param {import("../imagefiledirectory.js").ImageFileDirectory} fileDirectory
      */
@@ -7765,11 +7765,14 @@ async function g3(e, a, t, s) {
     const C = Math.round(n - 1 - b), k = Math.round(w - i - 1), y = await m.readRasters({ window: [C, k, C + d, k + d], samples: [0], interleave: !0, fillValue: NaN, signal: s }), B = m.getGDALNoData();
     for (let S = 0; S < o.length; S++) !Number.isFinite(o[S]) && Number.isFinite(y[S]) && y[S] !== B && (o[S] = y[S]);
   }
-  return K0(o);
+  return o;
+}
+async function y3(e, a, t, s) {
+  return K0(await g3(e, a, t, s));
 }
 Va.sort((e, a) => e.id.localeCompare(a.id));
-const y3 = "horn-strict35-v1:" + Va.map((e) => e.checksum).join(",");
-async function M3() {
+const M3 = "horn-strict35-v1:" + Va.map((e) => e.checksum).join(",");
+async function B3() {
   return globalThis.indexedDB ? new Promise((e) => {
     const a = indexedDB.open("portal-slope-v1", 1);
     a.onupgradeneeded = () => a.result.createObjectStore("tiles"), a.onsuccess = () => e(a.result), a.onerror = () => e(null);
@@ -7787,14 +7790,14 @@ async function Ot(e, a, t) {
     });
 }
 self.onmessage = async ({ data: { areas: e } }) => {
-  const a = await M3();
+  const a = await B3();
   try {
-    const t = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(y3)), s = Array.from(new Uint8Array(t), (d) => d.toString(16).padStart(2, "0")).join(""), n = H0(e);
+    const t = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(M3)), s = Array.from(new Uint8Array(t), (d) => d.toString(16).padStart(2, "0")).join(""), n = H0(e);
     let i = 0;
     for (const { column: d, row: o } of $0(n)) {
       const c = `${s}:${d}:${o}`;
       let r = await Ot(a, c), l = !!r;
-      r || (r = await g3(Va, d, o, AbortSignal.timeout(6e4)), await Ot(a, c, r)), r = X0(r, d * K, ga - o * K, n), self.postMessage({ type: "tile", column: d, row: o, bytes: r, hit: l, count: ++i }, [r.buffer]);
+      r || (r = await y3(Va, d, o, AbortSignal.timeout(6e4)), await Ot(a, c, r)), r = X0(r, d * K, ga - o * K, n), self.postMessage({ type: "tile", column: d, row: o, bytes: r, hit: l, count: ++i }, [r.buffer]);
     }
     self.postMessage({ type: "done" });
   } catch (t) {
@@ -7804,6 +7807,6 @@ self.onmessage = async ({ data: { areas: e } }) => {
   }
 };
 export {
-  C3 as L,
-  B3 as a
+  k3 as L,
+  C3 as a
 };
