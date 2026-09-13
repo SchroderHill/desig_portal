@@ -1,3 +1,7 @@
+## Current export experience
+
+DEM export has been removed at the user's request to keep downloads and submissions quick. The form now asks only for email, optional company, quote/proceed choice and a design description. One slope checkbox includes both the polygons and PDF shading. Local download needs no form. Earlier DEM verification below is historical.
+
 # Export delivery operations
 
 The export package contains NZTM GeoPackage layers, the annotated original PDF, metadata, optional classified slope polygons/coverage cells and optional DEM. PDF page 1's imported georeferenced panel is the crop; other pages are preserved. Snapshot geometry at preparation time. The native DEM option is limited to 25 million cells and may be omitted independently with a recorded reason.

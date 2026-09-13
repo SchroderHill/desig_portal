@@ -6,23 +6,22 @@ export function downloadFile(file) {
 export function initialiseExport({button,map,draw,getMaps,slope}) {
   const dialog=document.createElement('dialog');dialog.className='design-export';
   dialog.innerHTML=`<form method="dialog"><button class="export-close" aria-label="Close export">×</button></form><h2>Export design</h2>
-    <label>Map<select id="export-map"></select></label>
-    <label class="export-check"><input id="export-slope" type="checkbox"> Include slope polygons</label>
-    <label class="export-check"><input id="export-shade" type="checkbox"> Show slope on the exported map</label>
-    <label class="export-check"><input id="export-dem" type="checkbox"> Include elevation DEM (optional; may take longer)</label>
-    <p>Roads, pads and your original map are included. Files are cropped to the map panel.</p>
-    <form id="portal-submit-form"><div class="export-fields">
-    <label>Your name<input name="name" autocomplete="name" required maxlength="150"></label>
-    <label>Email<input name="email" type="email" autocomplete="email" required maxlength="200"></label>
-    <label>Phone<input name="phone" type="tel" maxlength="60"></label><label>Company<input name="company" maxlength="150"></label>
-    <label>Forest / property<input name="forest" required maxlength="200"></label><label>Job name<input name="job_name" required maxlength="200"></label>
-    <label>Location<input name="location" maxlength="300"></label><label>Design details<textarea name="design_details" required maxlength="3000"></textarea></label>
-    <label>Additional notes<textarea name="notes" maxlength="3000"></textarea></label>
-    <label hidden>Leave empty<input name="bot-field" tabindex="-1" autocomplete="off"></label></div>
-    <p>Download stays on your device. Send uploads this package and your details to Schroder Hill. Anyone with the private download link can access it.</p>
-    <div class="export-actions"><button type="button" id="export-local">Download locally</button><button type="submit">Send to Schroder Hill</button><button type="button" id="export-cancel" hidden>Cancel</button></div></form>
+    <label id="export-map-label">Map<select id="export-map"></select></label>
+    <p id="export-contents">Your roads and map are attached automatically.</p>
+    <label class="export-check"><input id="export-slope" type="checkbox"> Include slope on the map and as polygons</label>
+    <button type="button" id="export-local">Download locally</button>
+    <form id="portal-submit-form"><h3>Send to Schroder Hill</h3>
+    <label>Email *<input name="email" type="email" autocomplete="email" required maxlength="200"></label>
+    <label>Company name <span>(optional)</span><input name="company" autocomplete="organization" maxlength="150"></label>
+    <fieldset><legend>Please select one</legend>
+    <label class="export-check"><input type="radio" name="request_type" value="Please send me a quote" required> Please send me a quote</label>
+    <label class="export-check"><input type="radio" name="request_type" value="I am happy to proceed"> I am happy to proceed</label></fieldset>
+    <label>Design description *<textarea name="design_details" required maxlength="3000" rows="3" placeholder="Max grade, road width, vehicle use — a brief overview of your project"></textarea></label>
+    <div hidden aria-hidden="true"><input name="bot-field" tabindex="-1" autocomplete="off"></div>
+    <button type="submit" class="export-send">Send design</button></form>
+    <button type="button" id="export-cancel" hidden>Cancel</button>
     <p id="export-progress" role="status" aria-live="polite"></p>`;
-  const style=document.createElement('style');style.textContent=`.design-export{box-sizing:border-box;width:min(620px,94vw);max-height:90vh;overflow:auto;border:0;border-radius:10px;padding:24px;color:#26332a;font:14px/1.45 system-ui;box-shadow:0 12px 60px #0005}.design-export::backdrop{background:#0007}.design-export h2{margin:0 0 18px;font-size:21px}.design-export label{display:block;margin:8px 0}.design-export input:not([type=checkbox]),.design-export textarea,.design-export select{box-sizing:border-box;width:100%;padding:8px;border:1px solid #bdc8bf;border-radius:4px;font:inherit}.export-fields{display:grid;grid-template-columns:1fr 1fr;gap:0 14px}.design-export button{padding:9px 12px;border:0;border-radius:5px;background:#294632;color:white;cursor:pointer}.design-export button:disabled{opacity:.5;cursor:wait}.export-close{float:right}.export-actions{display:flex;gap:8px;flex-wrap:wrap}.design-export p{font-size:12px;color:#526257}@media(max-width:480px){.export-fields{grid-template-columns:1fr}}`;
+  const style=document.createElement('style');style.textContent=`.design-export{box-sizing:border-box;width:min(480px,94vw);max-height:92vh;overflow:auto;border:0;border-radius:10px;padding:24px;color:#26332a;font:14px/1.4 system-ui;box-shadow:0 12px 60px #0005}.design-export::backdrop{background:#0007}.design-export h2{margin:0 0 12px;font-size:21px}.design-export h3{font-size:16px;margin:0 0 12px}.design-export label{display:block;margin:10px 0}.design-export input:not([type=checkbox]):not([type=radio]),.design-export textarea,.design-export select{box-sizing:border-box;width:100%;padding:9px;margin-top:4px;border:1px solid #bdc8bf;border-radius:4px;font:inherit}.design-export textarea{resize:vertical}.design-export button{padding:10px 14px;border:0;border-radius:5px;background:#294632;color:white;cursor:pointer}.design-export button:disabled{opacity:.5;cursor:wait}.design-export .export-close{float:right;background:transparent;color:#526257;padding:0 4px;font-size:24px}.design-export p,.design-export span{font-size:12px;color:#526257}.design-export fieldset{border:0;padding:0;margin:14px 0}.design-export legend{font-size:12px;color:#526257}.design-export .export-check{display:flex;align-items:center;gap:8px}.design-export #portal-submit-form{border-top:1px solid #dde3de;margin-top:18px;padding-top:18px}.design-export .export-send{width:100%}.design-export #export-local{background:#eef2ef;color:#294632}.design-export [hidden]{display:none!important}`;
   document.head.append(style);document.body.append(dialog);
   style.textContent+=' .design-export [hidden]{display:none!important}';
   const select=dialog.querySelector('#export-map'),progress=dialog.querySelector('#export-progress'),form=dialog.querySelector('#portal-submit-form'),cancel=dialog.querySelector('#export-cancel');
@@ -31,7 +30,11 @@ export function initialiseExport({button,map,draw,getMaps,slope}) {
     maps=getMaps();select.replaceChildren();
     for(const overlay of maps)select.add(new Option(overlay.name,overlay.id));
     if(!maps.length)select.add(new Option('Geometry only — no imported map',''));
+    dialog.querySelector("#export-contents").textContent=maps.length?"Your roads and map are attached automatically.":"Your drawn roads and pads are included.";
+    dialog.querySelector("#export-slope").disabled=!maps.length;
+    if(!maps.length)dialog.querySelector("#export-slope").checked=false;
     select.disabled=maps.length<2;
+    dialog.querySelector("#export-map-label").hidden=maps.length<2;
     prepared=null;upload=null;reference=`DP-${crypto.randomUUID()}`;progress.textContent='';dialog.showModal();
   });
   cancel.onclick=()=>controller?.abort(new DOMException('Export cancelled','AbortError'));
@@ -47,14 +50,13 @@ export function initialiseExport({button,map,draw,getMaps,slope}) {
       if(details['bot-field'])throw Error('Submission could not be accepted.');
       const overlay=maps.find(m=>m.id===select.value);
       const features=structuredClone(draw.getAll().features);
-      const includeSlope=dialog.querySelector('#export-slope').checked||dialog.querySelector('#export-shade').checked;
-      const shade=dialog.querySelector('#export-shade').checked;
-      const includeDem=dialog.querySelector('#export-dem').checked;
-      const key=JSON.stringify({details,features,map:overlay?.id,includeSlope,shade,includeDem});
+      const includeSlope=dialog.querySelector('#export-slope').checked;
+      const shade=includeSlope;
+      const key=JSON.stringify({details,features,map:overlay?.id,includeSlope,shade});
       if(prepared?.key!==key){
         upload=null;
         const earthworks=map.getStyle()?.sources?.['road-earthworks-estimate']?.data?.features??[];
-        const file=await buildPackage({overlay,features,tiles:includeSlope?slope?.snapshot():null,includeSlope,shade,includeDem,details,reference,earthworks:structuredClone(earthworks),signal,onProgress:t=>progress.textContent=t});
+        const file=await buildPackage({overlay,features,tiles:includeSlope?slope?.snapshot():null,includeSlope,shade,details,reference,earthworks:structuredClone(earthworks),signal,onProgress:t=>progress.textContent=t});
         prepared={key,file};
       }
       if(!send){downloadFile(prepared.file);progress.textContent=`Downloaded ${reference}.zip. ${(prepared.file.exportWarnings??[]).join(' ')}`;return;}
@@ -69,7 +71,7 @@ export function initialiseExport({button,map,draw,getMaps,slope}) {
         await api(`?token=${upload.token}&part=${i}`,{method:'PUT',body:prepared.file.slice(i*upload.chunkSize,(i+1)*upload.chunkSize)});
       }
       await api(`?token=${upload.token}`,{method:'POST'});
-      const fields=new URLSearchParams({...details,'form-name':'design-portal-submission',reference,subject:`Design Portal — ${details.job_name} — ${reference}`,package_link:`${location.origin}/download.html#${upload.token}`});
+      const fields=new URLSearchParams({...details,'form-name':'design-portal-submission',reference,subject:`Design Portal — ${overlay?.name??'Design submission'} — ${reference}`,package_link:`${location.origin}/download.html#${upload.token}`});
       const response=await fetch('/',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:fields,signal});
       if(!response.ok)throw Error('Package uploaded, but the form was not accepted. Retry with the same reference.');
       progress.textContent=`Submitted to Schroder Hill. Reference: ${reference}. Keep this reference for follow-up.`;

@@ -15,7 +15,7 @@ async function traceTile(tile,signal) {
     worker.postMessage(tile);
   });
 }
-export async function buildPackage({overlay,features,tiles,includeSlope,shade,includeDem=false,details={},reference,earthworks=[],signal,onProgress=()=>{}}) {
+export async function buildPackage({overlay,features,tiles,includeSlope,shade,details={},reference,earthworks=[],signal,onProgress=()=>{}}) {
   const clipped=clipDesign(features,overlay?.georeference),slope=[];
   const notes=[];
   if(includeSlope && !tiles)throw Error('Slope is not ready. Enable slope and wait for processing, or uncheck slope export.');
@@ -37,19 +37,6 @@ export async function buildPackage({overlay,features,tiles,includeSlope,shade,in
   const files={'design.gpkg':await createGeoPackage(layers)};
   if(overlay){onProgress('Adding design to the original map…');files['design-map.pdf']=await annotatedPdf(overlay,clipped,shade?slope:[],earthworks);}
   else notes.push('Geometry-only export: no map was imported.');
-  if(includeDem){
-    try {
-      if(!overlay)throw Error('No map selected for DEM crop.');
-      files['elevation_EPSG2193.tif']=await new Promise((resolve,reject)=>{
-        const worker=new Worker(new URL('./dem-export.worker.js',import.meta.url),{type:'module'});
-        const stop=()=>{worker.terminate();signal?.removeEventListener('abort',abort);};
-        const abort=()=>{stop();reject(signal.reason);};signal?.addEventListener('abort',abort,{once:true});
-        worker.onerror=e=>{stop();reject(Error(e.message));};
-        worker.onmessage=({data})=>{if(data.progress){onProgress(data.progress);return;}stop();data.error?reject(Error(data.error)):resolve(data.bytes);};
-        worker.postMessage({...overlay.boundsLngLat,coordinates:overlay.georeference.viewportCoordinates});
-      });
-    }catch(e){signal?.throwIfAborted();notes.push(`DEM omitted: ${e.message}`);onProgress('DEM unavailable; continuing with core files…');}
-  }
   if(includeSlope)notes.push('Slope polygons use calculated 1 m classes >35 degrees. Tile edges are retained; missing data is unknown, not gentle ground.');
   if(includeSlope){
     // Keep the compact classified source as explicit coverage evidence, including unknown cells.
