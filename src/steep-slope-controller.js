@@ -1,4 +1,5 @@
-import { createOnDemandSlopeLoader } from "./on-demand-slope.js";
+import { createBrowserSlopeLoader } from "./browser-slope-loader.js";
+import { createSlopeRasterRenderer } from "./slope-raster-renderer.js";
 import { createRoadSlopePopups } from "./road-slope-cards.js";
 
 const SOURCE_ID = "steep-slope-35";
@@ -16,7 +17,7 @@ export function initialiseSteepSlope({
   PopupClass,
   thresholdDegrees = 35,
   corridorMetres = 75,
-  loadSlope = createOnDemandSlopeLoader(),
+  loadSlope = createBrowserSlopeLoader(),
   coverageButton,
   areaButton,
   areaElement,
@@ -40,6 +41,7 @@ export function initialiseSteepSlope({
   let displayedSource, displayedFeatures;
   let selectedArea = null;
   let pendingRequest = null;
+  const renderRaster = createSlopeRasterRenderer(map);
   const viewBounds = () => {
     const view = map.getBounds();
     return {west: view.getWest(), south: view.getSouth(), east: view.getEast(), north: view.getNorth()};
@@ -131,6 +133,7 @@ export function initialiseSteepSlope({
       resultElement.textContent = active && analysis ? resultSummary(analysis, drawingOrEditing ? null : roadAnalysis) : "";
     }
     if (!ensureMapLayers()) return;
+    renderRaster(active && analysis?.rasterTiles ? analysis.rasterTiles : new Map(), active && analysis?.rasterTiles ? viewBounds() : undefined);
     const source = map.getSource(SOURCE_ID);
     const features = active && analysis ? analysis.features : EMPTY_COLLECTION.features;
     if (source && (source !== displayedSource || features !== displayedFeatures)) {
@@ -154,6 +157,11 @@ export function initialiseSteepSlope({
       const requestedRoads = draw.getAll().features.filter(feature => feature.geometry?.type === 'LineString' && feature.geometry.coordinates.length >= 2);
       pendingRequest = new AbortController();
       const grid = await loadSlope({bounds, roads: requestedRoads, areas, signal: pendingRequest.signal,
+        onTile: partial => {
+          if (requestedRevision !== revision || !active) return;
+          analysis = partial.analyse({bounds:viewBounds()});
+          render();
+        },
         onProgress: message => { if (requestedRevision === revision && active) showStatus(statusElement, message); }});
       const result = grid.analyse({ bounds });
       result.outsideAnalysisArea = !areas.some(area => bounds.east > area.west && bounds.west < area.east
@@ -163,7 +171,7 @@ export function initialiseSteepSlope({
       render();
       const roads = drawingOrEditing ? [] : draw.getAll().features.filter((feature) => feature.geometry?.type === "LineString" && feature.geometry.coordinates.length >= 2);
       const signature = JSON.stringify({areas, roads: roads.map(({ id, geometry }) => ({ id, geometry }))});
-      if (signature !== roadSignature) {
+      if (signature !== roadSignature || grid.complete) {
         const summary = roads.length ? grid.analyse({ roads }) : null;
         if (requestedRevision !== revision || !active) return;
         roadAnalysis = summary;
