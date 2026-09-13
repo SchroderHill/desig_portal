@@ -1,3 +1,7 @@
+## Fast export revision
+
+Exports now contain roads/pads and an annotated PDF only when both source and output PDF are at most 5 MiB. Larger maps are skipped before parsing. PDF preparation failures do not block geometry delivery. No slope tracing, coverage grid or DEM processing occurs. Omitted maps are identified in the UI and package metadata. Earlier slope/DEM verification below is historical.
+
 ## Current export experience
 
 DEM export has been removed at the user's request to keep downloads and submissions quick. The form now asks only for email, optional company, quote/proceed choice and a design description. One slope checkbox includes both the polygons and PDF shading. Local download needs no form. Earlier DEM verification below is historical.

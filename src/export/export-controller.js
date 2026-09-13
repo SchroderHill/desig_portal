@@ -3,12 +3,11 @@ import {buildPackage} from './package.js';
 export function downloadFile(file) {
   const url=URL.createObjectURL(file),a=document.createElement('a');a.href=url;a.download=file.name;a.click();setTimeout(()=>URL.revokeObjectURL(url),60000);
 }
-export function initialiseExport({button,map,draw,getMaps,slope}) {
+export function initialiseExport({button,map,draw,getMaps}) {
   const dialog=document.createElement('dialog');dialog.className='design-export';
   dialog.innerHTML=`<form method="dialog"><button class="export-close" aria-label="Close export">×</button></form><h2>Export design</h2>
     <label id="export-map-label">Map<select id="export-map"></select></label>
-    <p id="export-contents">Your roads and map are attached automatically.</p>
-    <label class="export-check"><input id="export-slope" type="checkbox"> Include slope on the map and as polygons</label>
+    <p id="export-contents">Roads and pads are included. Maps under 5 MB attach automatically.</p>
     <button type="button" id="export-local">Download locally</button>
     <form id="portal-submit-form"><h3>Send to Schroder Hill</h3>
     <label>Email *<input name="email" type="email" autocomplete="email" required maxlength="200"></label>
@@ -30,9 +29,7 @@ export function initialiseExport({button,map,draw,getMaps,slope}) {
     maps=getMaps();select.replaceChildren();
     for(const overlay of maps)select.add(new Option(overlay.name,overlay.id));
     if(!maps.length)select.add(new Option('Geometry only — no imported map',''));
-    dialog.querySelector("#export-contents").textContent=maps.length?"Your roads and map are attached automatically.":"Your drawn roads and pads are included.";
-    dialog.querySelector("#export-slope").disabled=!maps.length;
-    if(!maps.length)dialog.querySelector("#export-slope").checked=false;
+    dialog.querySelector("#export-contents").textContent=maps.length?"Roads and pads are included. Maps under 5 MB attach automatically.":"Your drawn roads and pads are included.";
     select.disabled=maps.length<2;
     dialog.querySelector("#export-map-label").hidden=maps.length<2;
     prepared=null;upload=null;reference=`DP-${crypto.randomUUID()}`;progress.textContent='';dialog.showModal();
@@ -50,13 +47,11 @@ export function initialiseExport({button,map,draw,getMaps,slope}) {
       if(details['bot-field'])throw Error('Submission could not be accepted.');
       const overlay=maps.find(m=>m.id===select.value);
       const features=structuredClone(draw.getAll().features);
-      const includeSlope=dialog.querySelector('#export-slope').checked;
-      const shade=includeSlope;
-      const key=JSON.stringify({details,features,map:overlay?.id,includeSlope,shade});
+      const key=JSON.stringify({details,features,map:overlay?.id});
       if(prepared?.key!==key){
         upload=null;
         const earthworks=map.getStyle()?.sources?.['road-earthworks-estimate']?.data?.features??[];
-        const file=await buildPackage({overlay,features,tiles:includeSlope?slope?.snapshot():null,includeSlope,shade,details,reference,earthworks:structuredClone(earthworks),signal,onProgress:t=>progress.textContent=t});
+        const file=await buildPackage({overlay,features,details,reference,earthworks:structuredClone(earthworks),signal,onProgress:t=>progress.textContent=t});
         prepared={key,file};
       }
       if(!send){downloadFile(prepared.file);progress.textContent=`Downloaded ${reference}.zip. ${(prepared.file.exportWarnings??[]).join(' ')}`;return;}
@@ -74,7 +69,7 @@ export function initialiseExport({button,map,draw,getMaps,slope}) {
       const fields=new URLSearchParams({...details,'form-name':'design-portal-submission',reference,subject:`Design Portal — ${overlay?.name??'Design submission'} — ${reference}`,package_link:`${location.origin}/download.html#${upload.token}`});
       const response=await fetch('/',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:fields,signal});
       if(!response.ok)throw Error('Package uploaded, but the form was not accepted. Retry with the same reference.');
-      progress.textContent=`Submitted to Schroder Hill. Reference: ${reference}. Keep this reference for follow-up.`;
+      progress.textContent=`Submitted to Schroder Hill. Reference: ${reference}. ${(prepared.file.exportWarnings??[]).join(" ")}`;
     }catch(error){progress.textContent=error.name==='AbortError'?'Cancelled. Your details are preserved.':error.message;}
     finally{previous.forEach(([x,disabled])=>x.disabled=disabled);cancel.hidden=true;controller=null;}
   }
