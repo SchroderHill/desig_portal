@@ -25,5 +25,7 @@ await mkdir(outputDir, { recursive: true });
 await copy("index.html");
 await copy("download.html");
 await copy("submission-form.html");
+await copy("src/output-analytics.js");
+await copy("usage-privacy.html");
 await copy("geopdf-dist");
 await copyIfPresent(join("data", "slope"));

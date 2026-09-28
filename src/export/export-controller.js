@@ -1,4 +1,5 @@
 import {buildPackage} from './package.js';
+import {trackOutput} from '../output-analytics.js';
 
 export function downloadFile(file) {
   const url=URL.createObjectURL(file),a=document.createElement('a');a.href=url;a.download=file.name;a.click();setTimeout(()=>URL.revokeObjectURL(url),60000);
@@ -54,7 +55,7 @@ export function initialiseExport({button,map,draw,getMaps}) {
         const file=await buildPackage({overlay,features,details,reference,earthworks:structuredClone(earthworks),signal,onProgress:t=>progress.textContent=t});
         prepared={key,file};
       }
-      if(!send){downloadFile(prepared.file);progress.textContent=`Downloaded ${reference}.zip. ${(prepared.file.exportWarnings??[]).join(' ')}`;return;}
+      if(!send){downloadFile(prepared.file);trackOutput('design_package_download');progress.textContent=`Downloaded ${reference}.zip. ${(prepared.file.exportWarnings??[]).join(' ')}`;return;}
       progress.textContent='Uploading package…';
       const api=async(path,options={})=>{
         const response=await fetch('/.netlify/functions/design-packages'+path,{...options,signal});

@@ -39623,11 +39623,27 @@ async function MV({ overlay: C, features: A, details: I = {}, reference: g, eart
   const t = new File([G], `${g}.zip`, { type: "application/zip" });
   return t.exportWarnings = l.filter((Q) => Q.startsWith("Map omitted")), t;
 }
-function XV(C) {
+function XV(C, A) {
+  try {
+    if (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1" || window.navigator.doNotTrack === "1" || window.navigator.webdriver || window.localStorage.getItem("sh-disable-analytics") === "1") return;
+    const I = A || window.crypto.randomUUID(), g = JSON.stringify({ event: C, id: I });
+    return window.fetch("/api/tool-event", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: g,
+      keepalive: !0,
+      credentials: "omit"
+    }).catch(() => {
+    }), I;
+  } catch {
+    return;
+  }
+}
+function SV(C) {
   const A = URL.createObjectURL(C), I = document.createElement("a");
   I.href = A, I.download = C.name, I.click(), setTimeout(() => URL.revokeObjectURL(A), 6e4);
 }
-function SV({ button: C, map: A, draw: I, getMaps: g }) {
+function KV({ button: C, map: A, draw: I, getMaps: g }) {
   const B = document.createElement("dialog");
   B.className = "design-export", B.innerHTML = `<form method="dialog"><button class="export-close" aria-label="Close export">×</button></form><h2>Export design</h2>
     <label id="export-map-label">Map<select id="export-map"></select></label>
@@ -39668,7 +39684,7 @@ function SV({ button: C, map: A, draw: I, getMaps: g }) {
         G = { key: y, file: z };
       }
       if (!m) {
-        XV(G.file), c.textContent = `Downloaded ${Q}.zip. ${(G.file.exportWarnings ?? []).join(" ")}`;
+        SV(G.file), XV("design_package_download"), c.textContent = `Downloaded ${Q}.zip. ${(G.file.exportWarnings ?? []).join(" ")}`;
         return;
       }
       c.textContent = "Uploading package…";
@@ -39694,7 +39710,7 @@ function SV({ button: C, map: A, draw: I, getMaps: g }) {
     m.preventDefault(), b(!0);
   };
 }
-function KV({ map: C, draw: A, windowRef: I = window }) {
+function rV({ map: C, draw: A, windowRef: I = window }) {
   const g = C.getCanvas();
   let B = null;
   const i = () => ["draw_line_string", "draw_polygon"].includes(A.getMode?.()), s = (c) => {
@@ -39711,8 +39727,8 @@ function KV({ map: C, draw: A, windowRef: I = window }) {
     c.button === 1 && i() && c.preventDefault();
   }, !0), I.addEventListener("blur", s);
 }
-const Dh = window.designPortal ?? window.designPortalGeoPdf, TI = Dh?.map, Ds = Dh?.draw, hd = document.querySelector("#add-geopdf"), nd = document.querySelector("#geopdf-file"), x0 = document.querySelector("#geopdf-status"), Rh = document.querySelector("#layers-list"), rV = document.querySelector("#export"), Ec = /* @__PURE__ */ new Map();
-TI && Ds && (KV({ map: TI, draw: Ds }), ER({
+const Dh = window.designPortal ?? window.designPortalGeoPdf, TI = Dh?.map, Ds = Dh?.draw, hd = document.querySelector("#add-geopdf"), nd = document.querySelector("#geopdf-file"), x0 = document.querySelector("#geopdf-status"), Rh = document.querySelector("#layers-list"), pV = document.querySelector("#export"), Ec = /* @__PURE__ */ new Map();
+TI && Ds && (rV({ map: TI, draw: Ds }), ER({
   map: TI,
   draw: Ds,
   accessToken: window.mapboxgl?.accessToken,
@@ -39732,24 +39748,24 @@ TI && Ds && (KV({ map: TI, draw: Ds }), ER({
   statusElement: document.querySelector("#steep-slope-status"),
   thresholdDegrees: 35,
   corridorMetres: 75
-}), SV({ button: rV, map: TI, draw: Ds, getMaps: () => [...Ec.values()] }));
-!TI || !hd || !nd || !x0 || !Rh ? console.error("GeoPDF importer could not find its Design Portal controls or map bridge.") : pV();
-function pV() {
-  hd.addEventListener("click", () => nd.click()), nd.addEventListener("change", JV), TI.on("style.load", UV);
+}), KV({ button: pV, map: TI, draw: Ds, getMaps: () => [...Ec.values()] }));
+!TI || !hd || !nd || !x0 || !Rh ? console.error("GeoPDF importer could not find its Design Portal controls or map bridge.") : JV();
+function JV() {
+  hd.addEventListener("click", () => nd.click()), nd.addEventListener("change", kV), TI.on("style.load", xV);
 }
-async function JV(C) {
+async function kV(C) {
   const A = C.target.files?.[0];
   if (A) {
     hd.disabled = !0, kl(`Importing ${A.name}…`, "loading");
     try {
       const I = await qD(A), g = {
-        id: kV(),
+        id: LV(),
         name: A.name,
         visible: !0,
         opacity: 0.65,
         ...I
       };
-      Ec.set(g.id, g), await LV(), Vh(g), xV(g), TI.fire("slope.area.change"), uh(g);
+      Ec.set(g.id, g), await zV(), Vh(g), TV(g), TI.fire("slope.area.change"), uh(g);
       const B = g.pageCount > 1 ? " Showing page 1." : "", i = g.fitWarning ? " Check alignment: the control-point fit is low confidence." : "";
       kl(`Imported ${A.name}.${B}${i}`, g.fitWarning ? "warning" : "success");
     } catch (I) {
@@ -39759,7 +39775,7 @@ async function JV(C) {
     }
   }
 }
-function kV() {
+function LV() {
   return globalThis.crypto?.randomUUID ? `geopdf-${globalThis.crypto.randomUUID()}` : `geopdf-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 function yh(C) {
@@ -39768,7 +39784,7 @@ function yh(C) {
 function mG(C) {
   return `${C.id}-raster`;
 }
-function LV() {
+function zV() {
   return TI.isStyleLoaded() ? Promise.resolve() : new Promise((C) => TI.once("style.load", C));
 }
 function Vh(C) {
@@ -39779,7 +39795,7 @@ function Vh(C) {
     url: C.imageDataUrl,
     coordinates: C.coordinates
   });
-  const g = zV();
+  const g = UV();
   TI.addLayer({
     id: I,
     type: "raster",
@@ -39790,15 +39806,15 @@ function Vh(C) {
     }
   }, g);
 }
-function zV() {
+function UV() {
   return (TI.getStyle()?.layers ?? []).find(
     ({ id: A }) => A.startsWith("gl-draw-") || A === "vertices" || A === "grade-labels" || A === "parcels-line"
   )?.id;
 }
-function UV() {
+function xV() {
   Ec.forEach((C) => Vh(C));
 }
-function xV(C) {
+function TV(C) {
   const A = document.createElement("div");
   A.className = "geopdf-layer", A.dataset.geopdfId = C.id;
   const I = document.createElement("label");
@@ -39815,7 +39831,7 @@ function xV(C) {
   c.type = "range", c.min = "0", c.max = "1", c.step = "0.05", c.value = String(C.opacity), i.append(s, c);
   const l = document.createElement("div");
   l.className = "geopdf-actions";
-  const d = Ca("Zoom", () => uh(C)), Z = Ca("Remove", () => TV(C));
+  const d = Ca("Zoom", () => uh(C)), Z = Ca("Remove", () => jV(C));
   l.append(d, Z);
   const o = document.createElement("small");
   o.className = C.fitWarning ? "geopdf-meta geopdf-meta-warning" : "geopdf-meta";
@@ -39841,7 +39857,7 @@ function uh(C) {
     duration: 900
   });
 }
-function TV(C) {
+function jV(C) {
   const A = mG(C), I = yh(C);
   TI.getLayer(A) && TI.removeLayer(A), TI.getSource(I) && TI.removeSource(I), Ec.delete(C.id), TI.fire("slope.area.change"), document.querySelector(`[data-geopdf-id="${C.id}"]`)?.remove(), kl(`Removed ${C.name}.`, "success");
 }
