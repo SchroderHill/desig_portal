@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@netlify/blobs": "^11.0.3",
+    "@netlify/functions": "^6.0.0",
     "fflate": "^0.8.3",
     "geotiff": "^3.0.5",
     "pdf-lib": "^1.17.1",
